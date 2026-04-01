@@ -1,0 +1,1965 @@
+---
+title: "Il1r2 expression and Tregs including prolif Tregs "
+output: html_notebook
+---
+```{r}
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(Seurat))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(cowplot))
+suppressPackageStartupMessages(library(clustree))
+ suppressPackageStartupMessages(library(ggalluvial))
+```
+```{r}
+path.output='/Users/iha-eun/Library/CloudStorage/OneDrive-VrijeUniversiteitBrussel/Useful/Own analysis/results'
+dataset.name="DL37-38"
+subset_name="Tregs_incl.prolif"
+source("~/Documents/scripts/preprosessing_May.2020.R")
+cols.use=c("brown1","goldenrod1","darkorchid","darkolivegreen1","magenta","goldenrod3","dodgerblue","mediumpurple","turquoise3","lightblue","seagreen","coral","violetred","grey","green3","goldenrod4","palevioletred","yellow", "brown3", "pink", "bisque", "yellowgreen", "purple","lightgreen","royalblue","pink3","lightgreen","violet","coral","violetred","grey","green4","goldenrod4")
+```
+
+```{r,warning=FALSE, echo=FALSE}
+DEgenes_MC38_Tregs <- readRDS("/Users/iha-eun/Library/CloudStorage/OneDrive-VrijeUniversiteitBrussel/Useful/Own analysis/DEgenes_control.only_Tregs_ZhangL2020_mouse_MC38_tumor_Tcells_annot.rds")
+MC38_Tregs<-readRDS(paste0("/Users/iha-eun/Library/CloudStorage/OneDrive-VrijeUniversiteitBrussel/Useful/Own analysis/control.only_Tregs_ZhangL2020_mouse_MC38_tumor_Tcells.seurat.rds"))
+```
+
+```{r}
+seur_full=readRDS( paste0(path.output,dataset.name,".seurat.rds"))
+subset_old=readRDS( paste0(path.output,"Tregs_",dataset.name,".seurat.rds"))
+```
+
+```{r}
+cols.use2=c("Treg"="brown1",  "Treg prolif"="brown3","CD4T"="orange", "CD8T"="yellow2" ,"T prolif"="darkolivegreen1" ,  "NK"="mediumpurple" ,"B"= "magenta"   , "Neutrophil"="cyan"   , "Mono"="lightblue" ,      "Mac"="dodgerblue" ,"cDC2"="green3" ,"pDC"="lightgreen","cDC1"="green4" ,  "migDC"="pink"     )
+```
+
+
+```{r , fig.height = 6, fig.width =7,warning=FALSE}
+DimPlot(seur_full, group.by =  "annot",label=T,repel=T, cols=cols.use2) 
+```
+
+```{r , fig.height = 4, fig.width =13}
+DotPlot(seur_full, group.by = "annot",features=c("Cd3e","Cd3g","Foxp3","Il2ra","Tnfrsf9","Ikzf2","Izumo1r","Mki67","Stmn1","Cd4","Cd40lg","S1pr1","Cd8a","Cd8b1","Xcl1","Klra7","Klrb1c","Ncr1","Gzma","Cd79a","Cd79b","Cd19","Ms4a1","Csf3r","Retnlg","S100a8","Lyz2","Fn1","Chil3","F13a1","Vcan","Tgfbi","Adgre1","C1qa","Ms4a7","Lgmn","H2-Aa","Cd74","H2-DMb1","Cd209a","Napsa","Kmo","Ccr9","Siglech","Pacsin1","Xcr1","Rab7b","Clec9a","Flt3","Cacnb3","Ccl22","Nudt17"  ))+RotatedAxis()+theme(axis.title=element_blank())
+```
+
+
+```{r , fig.height = 5, fig.width = 6}
+FeaturePlot(seur_full,c("Il1r2"))
+```
+
+```{r , fig.height = 4, fig.width = 6}
+VlnPlot(seur_full,group.by = "annot",c("Il1r2"), cols=cols.use, pt.size = 0.2)+NoLegend()+theme(axis.title.x = element_blank())
+```
+
+
+```{r , fig.height =4, fig.width =4}
+DotPlot(seur_full,group.by = "annot",features=c("Il1r2"))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r , fig.height = 4, fig.width =6,warning=FALSE}
+DimPlot(subset_old, pt.size = 1,label=T,repel=T) 
+```
+
+
+```{r}
+Idents(seur_full)=seur_full$annot
+subset=merge(subset_old, seur_full[,WhichCells(seur_full, idents="Treg prolif")])
+subset$annot.old=Idents(subset)
+```
+
+
+```{r,warning=FALSE}
+dim(subset)
+```
+
+
+
+
+### Preprocessing with removing mitochondrial and roibosomal genes from the HVG list
+
+
+```{r}
+mito.genes <- grep(pattern = "^mt-", x = rownames(subset), value = TRUE)
+print(mito.genes)
+```
+```{r}
+ribo.genes <- grep(pattern = "^Rps", x = rownames(subset), value = TRUE)
+ribo.genes <- c(ribo.genes,grep(pattern = "^Rpl", x = rownames(subset), value = TRUE))
+print(ribo.genes)
+```
+
+```{r}
+subset$perc.ribo <- Matrix::colSums(GetAssayData(subset, slot = "counts")[ribo.genes, ])/Matrix::colSums(GetAssayData(subset, slot = "counts"))
+```
+
+```{r}
+mito.genes <- grep(pattern = "^mt-", x = rownames(subset), value = TRUE)
+print(mito.genes)
+```
+
+
+```{r , fig.height =4, fig.width = 12,warning=FALSE}
+FeaturePlot(object = subset, features = c("perc.mito","perc.ribo"))
+```
+```{r}
+HVG =VariableFeatures(subset)
+length(HVG)
+```
+```{r}
+HVG =HVG[!HVG %in% c(ribo.genes,mito.genes)]
+length(HVG)
+```
+
+
+```{r,warning=FALSE}
+subset <- RunPCA(subset, features = HVG,  reduction.name = "PcaHVG", reduction.key ="PcaHVG_", verbose=F)
+```
+```{r , fig.height = 4, fig.width = 6,warning=FALSE}
+ElbowPlot(object = subset,ndims =50,reduction = "PcaHVG")
+```
+
+```{r , fig.height = 12, fig.width = 12}
+DimHeatmap(subset, dims = 1:21, balanced = TRUE,reduction = "PcaHVG")
+```
+
+
+
+```{r,warning=FALSE}
+dims.use.subset<-18
+```
+
+
+
+```{r}
+subset <- RunUMAP(subset, dims = 1:dims.use.subset, reduction = "PcaHVG" ,verbose =F, n.neighbors = 20, reduction.name = "umapHVG", reduction.key ="umapHVG_") 
+```
+
+```{r , fig.height =3, fig.width = 4,warning=FALSE, echo=FALSE}
+DimPlot(object = subset,group.by="condition",reduction = "umapHVG", label=T, repel=T)
+```
+
+```{r , fig.height =5, fig.width =7,warning=FALSE, echo=FALSE}
+DimPlot(object = subset, group.by = "annot.old",reduction = "umapHVG",  label=T, repel=T, cols=cols.use)
+```
+```{r , fig.height = 4, fig.width = 8,warning=FALSE}
+FeaturePlot(object = subset,  features = c("Il1r2","Bmyc" ), ncol=2,reduction = "umapHVG")
+```
+```{r , fig.height = 4, fig.width = 12,warning=FALSE}
+FeaturePlot(object = subset,  features = c("Ifit3","Ifit3b", "Isg15" ), ncol=3,reduction = "umapHVG")
+```
+
+
+
+#### Clustering
+```{r ,warning=FALSE}
+subset <- FindNeighbors(subset, dims = 1:dims.use.subset, reduction = "PcaHVG", verbose=F, k.param=10, graph.name = "RNA_snn_HVG")
+for ( i in seq(0,2, 0.25))
+subset <- FindClusters(subset, graph.name = "RNA_snn_HVG", resolution = i, verbose=F, algorithm = 4)
+# algorithm= 4 is Leiden algorithm - often performs better
+```
+
+
+
+#### Plot of a clustering tree showing the relationship between clusterings at different resolutions. (using the clustree package)
+```{r , fig.height = 8, fig.width = 8,warning=FALSE}
+clustree(subset, prefix = "RNA_snn_HVG_res.")+
+   ggtitle("Clustering tree")
+```
+
+
+```{r , fig.height = 6, fig.width =8,warning=FALSE}
+plot<-list()
+for ( res in c( 0.75,1,1.25,1.5))
+plot[[as.character(res)]]<-DimPlot(subset, pt.size = 1,label=T,repel=T, group.by = paste0("RNA_snn_HVG_res.",res), cols=cols.use,reduction = "umapHVG") +
+   ggtitle(paste("res=",res))
+plot_grid(plotlist=plot)
+```
+
+
+```{r ,warning=FALSE}
+res=1
+Idents(subset)=paste0("RNA_snn_HVG_res.",res)
+```
+```{r , fig.height = 3, fig.width =4,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use,reduction = "umapHVG") 
+```
+
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, features = c( "Il1r2"), group.by = paste0("RNA_snn_HVG_res.",1))+RotatedAxis()
+```
+
+```{r}
+DEgenes=list()
+for (i in levels(Idents(subset))){
+  DEgenes[[i]]<-FindMarkers(subset, ident.1 = i,min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes[[i]]$cluster=i
+  DEgenes[[i]]$pseudocount=0.01
+  DEgenes[[i]]$max.cells.per.ident=1000
+  DEgenes[[i]]$gene=row.names(DEgenes[[i]])
+}
+saveRDS(DEgenes, paste0( path.output,"DEgenes_HVGrm_PC",dims.use.subset,".res",res,"_", subset_name,"_",dataset.name,".rds"))
+```
+
+
+```{r}
+res=1
+dims.use.subset=18
+DEgenes <-readRDS( paste0( path.output,"DEgenes_HVGrm_PC",dims.use.subset,".res",res,"_", subset_name,"_",dataset.name,".rds"))
+```
+
+#### Check the expression of the top DE genes using a DotPlot
+```{r}
+features.use=unlist(lapply(DEgenes, function(x) { head(x[x$avg_logFC>0,]$gene,8)}))
+length(features.use)
+names(features.use)=NULL
+features.use=features.use[!duplicated(features.use)]
+```
+
+```{r , fig.height =4, fig.width =14}
+DotPlot(subset, features = features.use)+RotatedAxis()
+```
+```{r , fig.height = 3, fig.width =4,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use,reduction = "umapHVG") 
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = c("Cd4","Cd40lg","Foxp3","Icos","Ccr2","Ly6a","Maf" ,"Il2ra","Ctla4" ,"Bcl2a1b","Ccl4","Nr4a1","Nr4a3" ,"Csf1" ,"Il10","Ccr8","Il1r2","Cst7" ,"Chchd10", "Tnfrsf18","S100a4" ,"Tff1","Bbx","Ccdc184" , "Eno1" ,"Bnip3",  "Hilpda" , "Ddit3"   ,"Bmyc","Npm1","Serbp1", "Ifngr1" ,"Il7r",  "Gimap1" ,"Ctss","Lef1" , "Ifi203","Ifit3","Isg15" ,"Ran","Mki67","Stmn1","doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+
+
+
+#### Standard preprocessing and clustering of the subsetted dataset
+```{r,warning=FALSE}
+subset <-  NormalizeData(subset,verbose = F) %>% FindVariableFeatures(verbose = F) %>% ScaleData(verbose = F) 
+subset=RunPCA(subset, features = VariableFeatures(subset) ,verbose = F)
+```
+```{r , fig.height = 4, fig.width = 6,warning=FALSE}
+ElbowPlot(object = subset,ndims =50)
+```
+```{r , fig.height = 12, fig.width = 12}
+DimHeatmap(subset, dims = 1:20, balanced = TRUE)
+```
+
+```{r , fig.height = 12, fig.width = 12}
+DimHeatmap(subset, dims = 21:40, balanced = TRUE)
+```
+
+```{r,warning=FALSE}
+dims.use.subset<-12
+```
+
+```{r,warning=FALSE}
+table(Idents(subset))
+```
+
+```{r}
+subset <- RunUMAP(subset, dims = 1:dims.use.subset,verbose =F, n.neighbors = 20) 
+```
+
+```{r , fig.height =3, fig.width = 4,warning=FALSE, echo=FALSE}
+DimPlot(object = subset,group.by="condition", label=T, repel=T)
+```
+
+```{r , fig.height =5, fig.width =7,warning=FALSE, echo=FALSE}
+DimPlot(object = subset, label=T, repel=T, cols=cols.use)
+```
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = c("Cd3e","Cd3g","Cd4","adt_CD4","Foxp3","Il2ra","Ctla4","Lgals3bp" , "Arl5a" ,"Ifi203" ,"Cst7" ,"Il10","Med20","Tmem126b","Il1r2","Ccr8","Rpl28",     "Rpl22l1" ,"Ran","Tff1","Dnlz",  "Ifngr1","Neurl3", "Shisa5" ,  "Gimap1" ,"Ctss","Ifit3","Ifit3b", "Hilpda" , "Ddit3"   , "Eno1" ,"Bnip3" ,"Serpina3f","Sell","adt_CD62L","Mki67","Stmn1","Mcm3","doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+
+
+
+ 
+```{r}
+i="Treg.Ctla4"  
+selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val_adj<1e-3 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.5,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = c(selected.genes))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+Il1r2-lo Ctla4-hi
+```{r , fig.height = 6, fig.width = 12,warning=FALSE}
+FeaturePlot(object = subset,  features = c("Ctla4","Lgals3bp" , "Arl5a"  ,"Cst7" ,"Il10","Med20" ), ncol=3)
+```
+
+```{r , fig.height =5, fig.width =7,warning=FALSE, echo=FALSE}
+DimPlot(object = subset, label=T, repel=T, cols=cols.use)
+```
+
+Il1r2-hi
+```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+FeaturePlot(object = subset,  features = c("Il1r2","Ccr8","Rpl28",     "Rpl22l1" ,"Ran","Tff1","Dnlz" , "Mki67","Stmn1"), ncol=3)
+```
+
+```{r , fig.height =5, fig.width =7,warning=FALSE, echo=FALSE}
+DimPlot(object = subset, label=T, repel=T, cols=cols.use)
+```
+
+
+Ifngr1-hi
+```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+FeaturePlot(object = subset,  features = c("Ifngr1","Neurl3", "Shisa5" ,  "Gimap1" ,"Ctss","Ifit3","Ifit3b" ), ncol=3)
+```
+
+```{r , fig.height =5, fig.width =7,warning=FALSE, echo=FALSE}
+DimPlot(object = subset, label=T, repel=T, cols=cols.use)
+```
+
+Hypoxic
+```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+FeaturePlot(object = subset,  features = c("Hilpda" , "Ddit3"   , "Eno1" ,"Bnip3" ,"Serpina3f" ), ncol=3)
+```
+
+```{r , fig.height =5, fig.width =7,warning=FALSE, echo=FALSE}
+DimPlot(object = subset, label=T, repel=T, cols=cols.use)
+```
+Il1r2-hi Ccr8-hi
+```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+FeaturePlot(object = subset,  features = c("Ccr8",  "Ccl4" ,"Il10" , "Bcl2a1d" , "Vsir" ,"Irf8", "Glipr1"), ncol=3)
+```
+
+Il1r2-hi Bmyc-hi
+```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+FeaturePlot(object = subset,  features = c( "Bmyc" ,"Cd83"  ,  "Nrip1" , "Chchd10" , "Gda","Hspa9"  ,  "Dgat2" ,"Cd70", "Gadd45g"   ), ncol=3)
+```
+
+
+
+
+#### Clustering
+```{r ,warning=FALSE}
+subset <- FindNeighbors(subset, dims = 1:dims.use.subset, verbose=F, k.param=15)
+for ( i in seq(0,2, 0.25))
+subset <- FindClusters(subset, resolution = i, verbose=F, algorithm = 4)
+# algorithm= 4 is Leiden algorithm - often performs better
+```
+
+
+
+#### Plot of a clustering tree showing the relationship between clusterings at different resolutions. (using the clustree package)
+```{r , fig.height = 8, fig.width = 8,warning=FALSE}
+clustree(subset, prefix = "RNA_snn_res.")+
+   ggtitle("Clustering tree")
+```
+
+
+```{r , fig.height = 6, fig.width =8,warning=FALSE}
+plot<-list()
+for ( res in c( 0.75,1,1.25,1.5))
+plot[[as.character(res)]]<-DimPlot(subset, pt.size = 1,label=T,repel=T, group.by = paste0("RNA_snn_res.",res), cols=cols.use) +
+   ggtitle(paste("res=",res))
+plot_grid(plotlist=plot)
+```
+
+
+```{r ,warning=FALSE}
+res=1.5
+Idents(subset)=paste0("RNA_snn_res.",res)
+```
+```{r , fig.height = 3, fig.width =4,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use) 
+```
+
+
+
+
+```{r}
+i="Treg.Il1r2.hi.Bmyc.hi"
+selected.genes= DEgenes_MC38_Tregs [[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.35,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+
+```{r}
+i= "Treg.Il1r2.hi.Ccr8.hi"
+selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.3,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r}
+i="Treg.Ctla4"  
+selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val_adj<1e-3 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.5,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = c(selected.genes))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r}
+i="Treg.Socs2" 
+selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val<1e-2 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.2,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = c(selected.genes))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r}
+DEgenes=list()
+for (i in levels(Idents(subset))){
+  DEgenes[[i]]<-FindMarkers(subset, ident.1 = i,min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes[[i]]$cluster=i
+  DEgenes[[i]]$pseudocount=0.01
+  DEgenes[[i]]$max.cells.per.ident=1000
+  DEgenes[[i]]$gene=row.names(DEgenes[[i]])
+}
+saveRDS(DEgenes, paste0( path.output,"DEgenes_PC",dims.use.subset,".res",res,"_", subset_name,"_",dataset.name,".rds"))
+```
+
+```{r}
+i="7.vs.3"
+  DEgenes[[i]]<-FindMarkers(subset, ident.1 = 7, ident.2 = 3,min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes[[i]]$cluster=i
+  DEgenes[[i]]$pseudocount=0.01
+  DEgenes[[i]]$max.cells.per.ident=1000
+  DEgenes[[i]]$gene=row.names(DEgenes[[i]])
+saveRDS(DEgenes, paste0( path.output,"DEgenes_PC",dims.use.subset,".res",res,"_", subset_name,"_",dataset.name,".rds"))
+```
+
+
+```{r , fig.height =4, fig.width =12}
+VolcanoPlot( DEgenes[[i]], logFCmin_neg_col = -0.5)+ggtitle(i)
+```
+```{r}
+res=1.5
+dims.use.subset=12
+DEgenes <-readRDS( paste0( path.output,"DEgenes_PC",dims.use.subset,".res",res,"_", subset_name,"_",dataset.name,".rds"))
+```
+
+#### Check the expression of the top DE genes using a DotPlot
+```{r}
+features.use=unlist(lapply(DEgenes, function(x) { head(x[x$avg_logFC>0,]$gene,8)}))
+length(features.use)
+names(features.use)=NULL
+features.use=features.use[!duplicated(features.use)]
+```
+
+```{r , fig.height =4, fig.width =14}
+DotPlot(subset, features = features.use)+RotatedAxis()
+```
+```{r , fig.height = 3, fig.width =4,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use) 
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = c( "Ifngr1", "Shisa5" ,  "Gimap1" ,"Ctss","Maf" ,"Ctla4","Ncor1","Btg1" ,"Crlf2","perc.ribo", "Cd4","Cst7" ,"Bcl2a1b" ,"Csf1","Rel" , "Il2ra","Foxp3","Icos","Ccr2","Ly6a","Il7r","Ccr8","Il1r2","Bmyc" ,"Mif","Slc39a7","Dnajb14","Zfp593","Nhp2","Actr5","Tff1","Myo18a","Scnm1", "Chchd10","Cd83" ,  "Nrip1" ,"Icam1",   "Hilpda" , "Ddit3"   , "Eno1" ,"Bnip3" , "Ifi203","Ifit3","Isg15" ,"Ran","Mki67","Stmn1","doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+
+
+```{r ,warning=FALSE}
+Idents(subset)=plyr::mapvalues(Idents(subset), from=1:8, 
+    to=c("Treg Ifngr1-hi ribo-hi", "Treg Ifngr1-hi Csf1","Treg Il1r2-hi","Treg Ifngr1-hi Ctla4-hi","Treg IFN",
+        "Treg Il1r2-hi prolif","Treg Il1r2-hi Ccr2-hi","Treg  Bmyc-hi"))
+```
+
+
+```{r}
+new.order=c ( "Treg Ifngr1-hi ribo-hi","Treg IFN", "Treg Ifngr1-hi Csf1","Treg Ifngr1-hi Ctla4-hi","Treg  Bmyc-hi" ,"Treg Il1r2-hi Ccr2-hi" ,"Treg Il1r2-hi",
+        "Treg Il1r2-hi prolif"    )
+new.order[!new.order %in% levels( Idents(subset))]
+levels( Idents(subset))[!levels( Idents(subset)) %in%new.order]
+```
+
+
+
+```{r}
+Idents(subset)=factor( Idents(subset), levels=new.order)
+subset$annot.detailed=Idents(subset)
+```
+
+
+
+
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use) 
+```
+
+```{r , fig.height =4, fig.width =6,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use, group.by = "annot.old") 
+```
+
+
+```{r , fig.height =8, fig.width =10,warning=FALSE}
+FeaturePlot(subset,c("Mki67","Birc5","Stmn1","Mcm3")) 
+```
+
+```{r , fig.height =4, fig.width =6,warning=FALSE}
+DimPlot(subset,label=T,repel=T, group.by = "Phase") 
+```
+```{r , fig.height =4, fig.width =14}
+DotPlot(subset, group.by = "annot.detailed", features = c( "Ifngr1", "Crlf2","perc.ribo", "Shisa5"  ,"Ctss","Ifi203","Ifit3","Isg15" ,"Ifng","Cd4","Cst7" ,"Bcl2a1b" ,"Csf1","Rel" ,"Maf" ,"Ctla4","Ncor1","Btg1" , "Bmyc" ,"Mif","Chchd10", "Nrip1" ,"Icam1",   "Hilpda" ,"Cd83" ,  "Ddit3"   , "Bnip3" ,"Eno1" ,"Il2ra","Foxp3","Icos","Ccr2","Ly6a","Il7r","Ccr8","Il1r2","Slc39a7","Dnajb14","Zfp593","Nhp2","Actr5","Tff1","Myo18a","Scnm1",  "Ran","Mki67","Stmn1","doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, group.by = "annot.detailed", features = c( "Il1r2"))+RotatedAxis()
+```
+
+
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, group.by = "annot.old", features = c( "Il1r2"))+RotatedAxis()
+```
+
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, group.by = "annot", features = c( "Il1r2"))+RotatedAxis()
+```
+
+
+
+
+
+
+
+```{r}
+subset$annot=plyr::mapvalues(Idents(subset), from=c("Treg Ifngr1-hi ribo-hi", "Treg Ifngr1-hi Csf1","Treg Ifngr1-hi Ctla4-hi","Treg  Bmyc-hi" ), to=c("Treg", "Treg","Treg","Treg" ))
+Idents(subset)="annot"
+Idents(subset, cells=WhichCells(subset, expression= annot.old=="Treg prolif"))="Treg Il1r2-hi prolif"
+subset$annot=Idents(subset)
+subset$annot=factor( subset$annot, levels=c("Treg", "Treg IFN"   ,  "Treg Il1r2-hi Ccr2-hi", "Treg Il1r2-hi" ,"Treg Il1r2-hi prolif"))
+```
+
+
+
+
+
+```{r , fig.height =8, fig.width =8,warning=FALSE}
+FeaturePlot(subset,c("Mki67","Birc5","Stmn1","Mcm3")) 
+```
+
+
+select.cells=CellSelector(FeaturePlot(subset,c("Birc5")))
+Idents(subset, cells=select.cells)="Treg Il1r2-hi prolif"
+select.cells=CellSelector(FeaturePlot(subset,c("Stmn1")))
+Idents(subset, cells=select.cells)="Treg Il1r2-hi prolif"
+
+subset$annot=Idents(subset)
+subset$annot=factor( subset$annot, levels=c("Treg", "Treg IFN"   ,  "Treg Il1r2-hi Ccr2-hi", "Treg Il1r2-hi" ,"Treg Il1r2-hi prolif"))
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, group.by = "annot", features = c("Ctla4","Btg1" , "Ifngr1", "Ifi203","Ifit3","Isg15","Il1r2", "Il2ra","Foxp3","Icos","Ccr2","Ly6a","Il7r","Il2rg","Fam120a","Rab27a","Furin" ,"Slfn9","perc.ribo", "Bmyc","Slc39a7","Zfp593","C1qbp","Nhp2","Dnajb14","Tff1","Il17ra","Scnm1","Bnip3" ,"Eno1", "Mif", "Ran","Mki67","Stmn1","Ccr8"))+RotatedAxis()
+```
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use, group.by = "annot") 
+```
+
+
+
+```{r}
+subset$annot.general=plyr::mapvalues(Idents(subset), from=c("Treg Ifngr1-hi ribo-hi", "Treg Ifngr1-hi Csf1","Treg Ifngr1-hi Ctla4-hi","Treg  Bmyc-hi" ,"Treg Il1r2-hi Ccr2-hi"  ), to=c("Treg", "Treg","Treg","Treg" ,"Treg Il1r2-hi"))
+Idents(subset)="annot.general"
+Idents(subset, cells=WhichCells(subset, expression= annot=="Treg Il1r2-hi prolif"))="Treg Il1r2-hi prolif"
+subset$annot.general=Idents(subset)
+subset$annot.general=factor( subset$annot.general, levels=c("Treg", "Treg IFN"   ,  "Treg Il1r2-hi" ,"Treg Il1r2-hi prolif"))
+```
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use, group.by = "annot.general") 
+```
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, group.by = "annot.general", features = c( "Il2ra","Foxp3","Icos","Ctla4","Btg1" , "Ccr2","Crlf2","Il7r","Ifngr1", "Ifi203","Ifit3","Isg15","Il1r2","perc.ribo", "Bmyc","Fam120a","Slc39a7","Rab27a","Furin" ,"Dnajb14","Tff1","Scnm1","Bnip3" ,"Eno1", "Mif", "Ran","Mki67","Stmn1","Ccr8"))+RotatedAxis()
+```
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, features = c( "Il1r2"), group.by = "annot.general")+RotatedAxis()
+```
+
+
+
+```{r}
+Idents(subset)="annot.detailed"
+Idents(subset, cells=WhichCells(subset, expression= annot=="Treg Il1r2-hi prolif"))="Treg Il1r2-hi prolif"
+subset$annot.detailed=Idents(subset)
+subset$annot.general=factor( subset$annot.general, levels=c ( "Treg Ifngr1-hi ribo-hi","Treg IFN", "Treg Ifngr1-hi Csf1","Treg Ifngr1-hi Ctla4-hi","Treg  Bmyc-hi" ,"Treg Il1r2-hi Ccr2-hi" ,"Treg Il1r2-hi",  "Treg Il1r2-hi prolif"    ))
+```
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use, group.by = "annot.detailed") 
+```
+
+
+
+```{r,warning=FALSE, echo=FALSE}
+clusters=levels(subset$annot.detailed)
+DEgenes_list<-list()
+for ( i in clusters){
+DEgenes_list[[i]]<-  FindMarkers(subset, group.by="annot.detailed",ident.1=i,min.cells.group=1, max.cells.per.ident = 1000, pseudocount.use = 0.1)
+DEgenes_list[[i]]$gene=rownames(DEgenes_list[[i]])
+DEgenes_list[[i]]$cluster.1=i
+DEgenes_list[[i]]$pseudocount.use=0.1
+DEgenes_list[[i]]$max.cells.per.ident=1000
+}
+saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
+```
+
+
+
+
+```{r,warning=FALSE, echo=FALSE}
+DEgenes_list=readRDS( paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
+```
+```{r,warning=FALSE, echo=FALSE}
+names(DEgenes_list)=make.names(names(DEgenes_list))
+### Save the differentially expressed genes as an excel table
+writexl::write_xlsx(DEgenes_list,paste0(path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.xlsx"))
+```
+
+
+```{r,warning=FALSE, echo=FALSE}
+clusters=levels(subset$annot.general)
+DEgenes_list<-list()
+for ( i in clusters){
+DEgenes_list[[i]]<-  FindMarkers(subset, group.by="annot.general",ident.1=i,min.cells.group=1, max.cells.per.ident = 1000, pseudocount.use = 0.1)
+DEgenes_list[[i]]$gene=rownames(DEgenes_list[[i]])
+DEgenes_list[[i]]$cluster.1=i
+DEgenes_list[[i]]$pseudocount.use=0.1
+DEgenes_list[[i]]$max.cells.per.ident=1000
+}
+saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.general.rds"))
+```
+
+
+
+
+```{r,warning=FALSE, echo=FALSE}
+DEgenes_list=readRDS( paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.general.rds"))
+```
+```{r,warning=FALSE, echo=FALSE}
+names(DEgenes_list)=make.names(names(DEgenes_list))
+### Save the differentially expressed genes as an excel table
+writexl::write_xlsx(DEgenes_list,paste0(path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.general.xlsx"))
+```
+
+
+```{r,warning=FALSE, echo=FALSE}
+clusters=levels(subset$annot)
+DEgenes_list<-list()
+for ( i in clusters){
+DEgenes_list[[i]]<-  FindMarkers(subset, group.by="annot",ident.1=i,min.cells.group=1, max.cells.per.ident = 1000, pseudocount.use = 0.1)
+DEgenes_list[[i]]$gene=rownames(DEgenes_list[[i]])
+DEgenes_list[[i]]$cluster.1=i
+DEgenes_list[[i]]$pseudocount.use=0.1
+DEgenes_list[[i]]$max.cells.per.ident=1000
+}
+saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.rds"))
+```
+
+
+```{r,warning=FALSE, echo=FALSE}
+DEgenes_list=readRDS( paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.rds"))
+```
+
+
+
+```{r,warning=FALSE, echo=FALSE}
+Idents(subset)="annot"
+```
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, features = c( "Il1r2"), group.by = "annot")+RotatedAxis()
+```
+```{r}
+i="Il1r2-hi.vs.Treg_and_Treg.IFN"
+  DEgenes[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi", ident.2 = c("Treg","Treg IFN"),min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes[[i]]$cluster=i
+  DEgenes[[i]]$pseudocount=0.01
+  DEgenes[[i]]$max.cells.per.ident=1000
+  DEgenes[[i]]$gene=row.names(DEgenes[[i]])
+  saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.rds"))
+```
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2-hi.vs.Treg_and_Treg.IFN"
+VolcanoPlot(  DEgenes[[i]], p_valmax_col = 0.5)
+```
+
+
+
+
+```{r}
+selected.genes=rownames( DEgenes[[i]][ DEgenes[[i]]$p_val<1e-5 &  DEgenes[[i]]$avg_logFC>1,])
+length(selected.genes)
+```
+
+Export gene names as a csv file for metascape
+```{r}
+write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
+```
+
+
+```{r}
+GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
+#Select only the main pathways
+GO.metascape$group=sapply(strsplit(GO.metascape$GroupID, "_"), "[[",2)
+GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
+```
+
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=1
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+```{r}
+i="Il1r2-hi-Ccr2.vs.Treg_and_Treg.IFN"
+  DEgenes[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi Ccr2-hi", ident.2 = c("Treg","Treg IFN"),min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes[[i]]$cluster=i
+  DEgenes[[i]]$pseudocount=0.01
+  DEgenes[[i]]$max.cells.per.ident=1000
+  DEgenes[[i]]$gene=row.names(DEgenes[[i]])
+  saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.rds"))
+```
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2-hi-Ccr2.vs.Treg_and_Treg.IFN"
+VolcanoPlot(  DEgenes[[i]], p_valmax_col = 0.5)
+```
+
+```{r}
+selected.genes=rownames( DEgenes[[i]][ DEgenes[[i]]$p_val<1e-3 &  DEgenes[[i]]$avg_logFC>0.8,])
+length(selected.genes)
+```
+
+Export gene names as a csv file for metascape
+```{r}
+write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
+```
+
+
+```{r}
+GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
+#Select only the main pathways
+GO.metascape$group=sapply(strsplit(GO.metascape$GroupID, "_"), "[[",2)
+GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
+```
+
+
+
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=1
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+
+
+```{r}
+i="Il1r2-hi_Il1r2-hi_Ccr2.vs.Treg_and_Treg.IFN"
+  DEgenes[[i]]<-FindMarkers(subset, ident.1 = c("Treg Il1r2-hi","Treg Il1r2-hi Ccr2-hi"), ident.2 = c("Treg","Treg IFN"),min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes[[i]]$cluster=i
+  DEgenes[[i]]$pseudocount=0.01
+  DEgenes[[i]]$max.cells.per.ident=1000
+  DEgenes[[i]]$gene=row.names(DEgenes[[i]])
+  saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.rds"))
+```
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2-hi_Il1r2-hi_Ccr2.vs.Treg_and_Treg.IFN"
+VolcanoPlot(  DEgenes[[i]], p_valmax_col = 0.5)
+```
+
+```{r}
+selected.genes=rownames( DEgenes[[i]][ DEgenes[[i]]$p_val<1e-4 &  DEgenes[[i]]$avg_logFC>1,])
+length(selected.genes)
+```
+
+Export gene names as a csv file for metascape
+```{r}
+write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
+```
+
+
+```{r}
+GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
+#Select only the main pathways
+GO.metascape$group=sapply(strsplit(GO.metascape$GroupID, "_"), "[[",2)
+GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
+```
+
+### Top GO enriched main pathway:
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=1
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+
+
+```{r}
+i="Il1r2-hi-Ccr2.vs.Il1r2-hi"
+  DEgenes[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi Ccr2-hi", ident.2 = c("Treg Il1r2-hi"),min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes[[i]]$cluster=i
+  DEgenes[[i]]$pseudocount=0.01
+  DEgenes[[i]]$max.cells.per.ident=1000
+  DEgenes[[i]]$gene=row.names(DEgenes[[i]])
+  saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.rds"))
+```
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2-hi-Ccr2.vs.Il1r2-hi"
+VolcanoPlot(  DEgenes[[i]], p_value ="p_val" )
+```
+
+
+```{r}
+i="Il1r2-hi-prolif.vs.Il1r2-hi"
+  DEgenes[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi prolif", ident.2 = c("Treg Il1r2-hi"),min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes[[i]]$cluster=i
+  DEgenes[[i]]$pseudocount=0.01
+  DEgenes[[i]]$max.cells.per.ident=1000
+  DEgenes[[i]]$gene=row.names(DEgenes[[i]])
+  saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.rds"))
+```
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2-hi-prolif.vs.Il1r2-hi"
+VolcanoPlot(  DEgenes[[i]], p_value ="p_val" )
+```
+
+
+```{r,warning=FALSE, echo=FALSE}
+DEgenes_list=readRDS( paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.rds"))
+```
+```{r,warning=FALSE, echo=FALSE}
+names(DEgenes_list)=make.names(names(DEgenes_list))
+### Save the differentially expressed genes as an excel table
+writexl::write_xlsx(DEgenes_list,paste0(path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.xlsx"))
+```
+
+
+
+
+
+
+
+
+
+```{r , fig.height =5, fig.width =7,warning=FALSE}
+DimPlot(subset, group.by = "annot.detailed",label=T,repel=T,cols= cols.use) 
+```
+
+```{r , fig.height =4, fig.width =14}
+DotPlot(subset, group.by = "annot.detailed", features = c( "Ifngr1", "Crlf2","perc.ribo", "Shisa5"  ,"Ctss","Ifi203","Ifit3","Isg15" ,"Ifng","Cd4","Cst7" ,"Bcl2a1b" ,"Csf1","Rel" ,"Maf" ,"Ctla4","Ncor1","Btg1" , "Bmyc" ,"Mif","Chchd10", "Nrip1" ,"Icam1",   "Hilpda" ,"Cd83" ,  "Ddit3"   , "Bnip3" ,"Eno1" ,"Il2ra","Foxp3","Icos","Ccr2","Ly6a","Il7r","Ccr8","Il1r2","Slc39a7","Dnajb14","Zfp593","Nhp2","Actr5","Tff1","Myo18a","Scnm1",  "Ran","Mki67","Stmn1","doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+
+
+```{r}
+i="Treg.Il1r2.hi.Bmyc.hi"
+selected.genes= DEgenes_MC38_Tregs [[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.35,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, group.by = "annot.detailed", features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, group.by = "annot", features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+
+
+```{r , fig.height =4, fig.width =4.3,warning=FALSE}
+FeaturePlot(subset,"Il1r2") 
+```
+
+```{r , fig.height =4, fig.width =4,warning=FALSE}
+VlnPlot(subset,"Il1r2",cols= cols.use, group.by = "annot.general")+NoLegend() +theme(axis.title.x = element_blank())
+```
+
+```{r , fig.height =4, fig.width =6,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use, group.by = "annot.general") 
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, group.by = "annot.general", features = c( "Il2ra","Foxp3","Icos","Ctla4","Btg1" , "Ccr2","Crlf2","Il7r","Ifngr1", "Ifi203","Ifit3","Isg15","Il1r2","perc.ribo", "Bmyc","Fam120a","Slc39a7","Rab27a","Furin" ,"Dnajb14","Tff1","Scnm1","Bnip3" ,"Eno1", "Mif", "Ran","Mki67","Stmn1","Ccr8"))+RotatedAxis()
+```
+
+
+
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, features = c( "Il1r2"), group.by = "annot.general")+RotatedAxis()
+```
+
+
+```{r , fig.height =4, fig.width =4,warning=FALSE}
+VlnPlot(subset,"Il1r2",cols= cols.use, group.by = "annot")+NoLegend() +theme(axis.title.x = element_blank())
+```
+
+```{r , fig.height =4, fig.width =6,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use, group.by = "annot") 
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, group.by = "annot", features = c("Ctla4","Btg1" ,"Ltb", "Ifngr1", "Ifi203","Ifit3","Isg15","Il1r2", "Il2ra","Foxp3","Icos","Ccr2","Ly6a","Il7r","Il2rg","Fam120a","Rab27a","Furin" ,"Slfn9","perc.ribo", "Bmyc","Slc39a7","Zfp593","C1qbp","Nhp2","Dnajb14","Tff1","Il17ra","Scnm1","Bnip3" ,"Eno1", "Mif", "Ran","Mki67","Stmn1","Ccr8"))+RotatedAxis()
+```
+
+
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, features = c( "Il1r2"), group.by = "annot")+RotatedAxis()
+```
+
+
+hypoxia
+```{r , fig.height =3, fig.width =13}
+DotPlot(subset, features = c("Hilpda", "Vegfa", "Bnip3", "Hmox1", "Fth1", "Aldoa", "Mif", "Ftl1", "Arg1", "Ldha", "Adam8", "Eno1", "Srgn", "Ndrg1", "Mt1", "Fam162a", "Slc7a2", "Slc2a1", "Mgarp", "Lgals3","Spp1" ))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+Treg activation markers
+```{r , fig.height =3, fig.width =10}
+DotPlot(subset, group.by = "annot", features = c("Ctla4","Nrp1","Itgae", "Ikzf2","Tnfrsf18","Tnfrsf4","Il2ra","Klrg1","Icos","Ccr8","Tnfsf9","Havcr2","Lag3","Pdcd1","Tigit"))+RotatedAxis()
+```
+
+
+
+deviation of a suppressive Treg phenotype
+```{r , fig.height =3, fig.width =10}
+DotPlot(subset, group.by = "annot", features = c("Il17a","Il17b","Il17c","Il17f", "Rorc","Ifng","Il1r1"))+RotatedAxis()
+```
+
+```{r , fig.height =4, fig.width =8,warning=FALSE, echo=FALSE}
+FeaturePlot(object = subset, c("Il1r2","Bmyc"))
+```
+
+### PC=
+
+```{r,warning=FALSE}
+dims.use.subset<-25
+```
+
+
+
+```{r}
+subset <- RunUMAP(subset, dims = 1:dims.use.subset, reduction.name = paste0("umapPC",dims.use.subset), reduction.key = paste0("umapPC",dims.use.subset,"_"),verbose =F, n.neighbors = 10) 
+```
+
+
+```{r , fig.height =4, fig.width =8,warning=FALSE, echo=FALSE}
+FeaturePlot(object = subset,reduction = paste0("umapPC",dims.use.subset), c("Il1r2","Bmyc"))
+```
+```{r , fig.height =5, fig.width =7,warning=FALSE, echo=FALSE}
+DimPlot(object = subset, group.by = "annot.old",reduction = paste0("umapPC",dims.use.subset), label=T, repel=T, cols=cols.use)
+```
+
+```{r , fig.height =5, fig.width =7,warning=FALSE, echo=FALSE}
+DimPlot(object = subset, group.by = "annot",reduction = paste0("umapPC",dims.use.subset), label=T, repel=T, cols=cols.use)
+```
+```{r , fig.height =5, fig.width =7,warning=FALSE, echo=FALSE}
+DimPlot(object = subset, group.by = "annot.detailed",reduction = paste0("umapPC",dims.use.subset), label=T, repel=T, cols=cols.use)
+```
+
+
+
+Il1r2-hi Ccr8-hi
+```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+FeaturePlot(object = subset,  features = c("Ccr8",  "Ccl4" ,"Il10" , "Bcl2a1d" , "Vsir" ,"Irf8", "Glipr1"),reduction = paste0("umapPC",dims.use.subset), ncol=3)
+```
+
+Il1r2-hi Bmyc-hi
+```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+FeaturePlot(object = subset,reduction = paste0("umapPC",dims.use.subset),  features = c( "Bmyc" ,"Cd83"  ,  "Nrip1" , "Chchd10" , "Gda","Hspa9"  ,  "Dgat2" ,"Cd70", "Gadd45g"   ), ncol=3)
+```
+
+
+
+
+#### Clustering
+```{r ,warning=FALSE}
+subset <- FindNeighbors(subset, dims = 1:dims.use.subset, verbose=F, k.param=10)
+for ( i in seq(0,2, 0.25))
+subset <- FindClusters(subset, resolution = i, verbose=F, algorithm = 4)
+# algorithm= 4 is Leiden algorithm - often performs better
+```
+
+
+
+#### Plot of a clustering tree showing the relationship between clusterings at different resolutions. (using the clustree package)
+```{r , fig.height = 8, fig.width = 8,warning=FALSE}
+clustree(subset, prefix = "RNA_snn_res.")+
+   ggtitle("Clustering tree")
+```
+```{r , fig.height = 8, fig.width = 8,warning=FALSE}
+clustree(subset, prefix = "RNA_snn_res.",node_colour = "Il1r2", node_colour_aggr = "median")+
+   ggtitle("Clustering tree: Il1r2")
+```
+
+```{r , fig.height = 6, fig.width =8,warning=FALSE}
+plot<-list()
+for ( res in c( 0.75,1,1.25,1.5))
+plot[[as.character(res)]]<-DimPlot(subset, pt.size = 1,label=T,repel=T, group.by = paste0("RNA_snn_res.",res), cols=cols.use,reduction = paste0("umapPC",dims.use.subset)) +
+   ggtitle(paste("res=",res))
+plot_grid(plotlist=plot)
+```
+
+
+```{r ,warning=FALSE}
+res=1.5
+Idents(subset)=paste0("RNA_snn_res.",res)
+Idents(subset)=factor(Idents(subset), levels=1:9)
+```
+```{r , fig.height = 3, fig.width =4,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use,reduction = paste0("umapPC",dims.use.subset)) 
+```
+```{r , fig.height =4, fig.width =8,warning=FALSE, echo=FALSE}
+FeaturePlot(object = subset,reduction = paste0("umapPC",dims.use.subset), c("Il1r2","Bmyc"))
+```
+
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, features = c( "Il1r2"))+RotatedAxis()
+```
+
+
+```{r}
+DEgenes=list()
+for (i in levels(Idents(subset))){
+  DEgenes[[i]]<-FindMarkers(subset, ident.1 = i,min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000)
+  DEgenes[[i]]$cluster=i
+  DEgenes[[i]]$pseudocount=0.01
+  DEgenes[[i]]$max.cells.per.ident=1000
+  DEgenes[[i]]$gene=row.names(DEgenes[[i]])
+}
+saveRDS(DEgenes, paste0( path.output,"DEgenes_PC",dims.use.subset,".res",res,"_", subset_name,"_",dataset.name,".rds"))
+```
+
+
+```{r}
+res=1.5
+dims.use.subset=25
+DEgenes <-readRDS( paste0( path.output,"DEgenes_PC",dims.use.subset,".res",res,"_", subset_name,"_",dataset.name,".rds"))
+```
+
+hypoxia
+```{r , fig.height =3, fig.width =13}
+DotPlot(subset, features = c("Hilpda", "Vegfa", "Bnip3", "Hmox1", "Fth1", "Aldoa", "Mif", "Ftl1", "Arg1", "Ldha", "Adam8", "Eno1", "Srgn", "Ndrg1", "Mt1", "Fam162a", "Slc7a2", "Slc2a1", "Mgarp", "Lgals3","Spp1" ))+RotatedAxis()+theme(axis.title = element_blank())
+```
+#### Check the expression of the top DE genes using a DotPlot
+```{r}
+features.use=unlist(lapply(DEgenes, function(x) { head(x[x$avg_logFC>0,]$gene,7)}))
+length(features.use)
+names(features.use)=NULL
+features.use=features.use[!duplicated(features.use)]
+```
+
+```{r , fig.height =4, fig.width =14}
+DotPlot(subset, features = features.use)+RotatedAxis()
+```
+```{r , fig.height = 3, fig.width =4,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use,reduction = paste0("umapPC",dims.use.subset)) 
+```
+
+
+```{r , fig.height =4, fig.width =14}
+DotPlot(subset, features = c( "Ifngr1","Icos", "Il2ra","Foxp3",  "Il7r","Btg1","Ccr2","Gzmb","Ccl5","Fus","Ctla4","perc.ribo","Rpl17","Fau",  "Hilpda" , "Ddit3","Hspa1b","Hspa1a"   , "Eno1" ,"Bnip3" ,"Cst7" ,"Bcl2a1b","Nkg7" ,"Csf1","Rel"  ,"Ly6a","Ccr8","Il1r2","Bmyc" ,"Mif","Ddt","Slc39a7","Dnajb14","Zfp593","Nhp2","Actr5","Tff1","Myo18a","Scnm1", "Chchd10","Cd83" ,  "Nrip1" ,"Abcb10","Ccrl2","Slfn8","Ifit1","Icam1",  "Ifi203","Ifit3","Isg15" ,"Shisa5" ,"Ran","Mki67","Stmn1","doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+
+
+```{r ,warning=FALSE}
+Idents(subset)=plyr::mapvalues(Idents(subset), from=1:9, 
+    to=c("Treg Ifngr1","Treg Il1r2-hi IFN","Treg Il1r2-hi ribo-hi","Treg Il1r2-hi prolif","Treg Ifngr1 Ccr2",
+         "Treg Il1r2-hi Bmyc-hi","Treg Csf1","Treg IFN","Treg Csf1"))
+```
+
+
+
+
+
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use,reduction = paste0("umapPC",dims.use.subset)) 
+```
+
+```{r , fig.height =4, fig.width =6,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use, group.by = "annot.old",reduction = paste0("umapPC",dims.use.subset)) 
+```
+
+
+```{r , fig.height =8, fig.width =10,warning=FALSE}
+FeaturePlot(subset,c("Mki67","Stmn1","Mcm3","Il1r2"),reduction = paste0("umapPC",dims.use.subset)) 
+```
+
+select.cells=CellSelector(FeaturePlot(subset,c("Mki67"),reduction = paste0("umapPC",dims.use.subset)))
+Idents(subset, cells=select.cells)="Treg Il1r2-hi prolif"
+subset$annot.detailed=Idents(subset)
+
+
+```{r}
+new.order=c ( "Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN" ,"Treg Il1r2-hi IFN", "Treg Il1r2-hi ribo-hi", "Treg Il1r2-hi Bmyc-hi" ,
+        "Treg Il1r2-hi prolif"    )
+new.order[!new.order %in% levels( Idents(subset))]
+levels( Idents(subset))[!levels( Idents(subset)) %in%new.order]
+```
+
+
+
+```{r}
+Idents(subset)=factor( Idents(subset), levels=new.order)
+subset$annot.detailed=Idents(subset)
+```
+
+
+
+```{r}
+DEG=FindMarkers(seur_full, ident.1 = "CD4 T", ident.2 = "Treg")
+DEG$gene=rownames(DEG)
+```
+
+```{r , fig.height =4, fig.width =12}
+VolcanoPlot(DEG)
+```
+
+
+
+```{r}
+selected.genes=DEG[DEG$p_val<0.1 &  DEG$avg_logFC>0.5,"gene"]
+length(selected.genes)
+```
+```{r , fig.height =4, fig.width =12}
+DotPlot(seur_full, group.by = "annot", features = unique(c(selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = unique(c(selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r}
+i="Treg.Il1r2.hi.Bmyc.hi"
+selected.genes= DEgenes_MC38_Tregs [[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.35,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+
+```{r}
+i= "Treg.Il1r2.hi.Ccr8.hi"
+selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.3,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r}
+i="Treg.Ctla4"  
+selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val_adj<1e-3 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.5,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = c(selected.genes))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(subset,label=T,repel=T,cols= cols.use,reduction = paste0("umapPC",dims.use.subset)) 
+```
+```{r , fig.height =4, fig.width =14}
+DotPlot(subset, features = c( "Foxp3","Il2ra","Ctla4","Cst7" ,"Bcl2a1b","Nkg7" ,"Csf1","Rel"  , "Btg1","Ifngr1","Icos",  "Il7r","Ccr2","Gzmb","Ccl5","Fus","Ifit3","Slfn8","Ifit1",  "Ifi203","Isg15" ,"Gbp7" ,"Ly6a","Il1r2","perc.ribo","Rpl17","Fau",  "Hilpda" ,"Chchd10","Bmyc" , "Ddt","Slc39a7","Dnajb14","Tff1","Ripk3","Hmgn5","Scnm1", "Zfp593","Nhp2","Mif","Ran","Mki67","Stmn1","Ccr8","Eno1" ,"Bnip3" ,"doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+
+
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, features = c( "Il1r2"))+RotatedAxis()
+```
+
+
+```{r}
+subset$annot.general=plyr::mapvalues(Idents(subset), from=c( "Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2", "Treg Il1r2-hi ribo-hi" ), to=c("Treg","Treg","Treg", "Treg Il1r2-hi" ))
+```
+
+
+
+```{r , fig.height =4, fig.width =6,warning=FALSE}
+DimPlot(subset, group.by = "annot.general",label=T,repel=T,cols= cols.use,reduction = paste0("umapPC",dims.use.subset)) 
+```
+```{r , fig.height =4, fig.width =12}
+DotPlot(subset, group.by = "annot.general", features = c( "Foxp3","Il2ra","Ctla4","Ifit3","Slfn8","Ifit1",  "Ifi203","Isg15" ,"Gbp7" ,"Ly6a","Il1r2","perc.ribo","Rpl17",  "Hilpda" ,"Bnip3","Chchd10","Bmyc" ,"Tff1","Ripk3","Hmgn5","Scnm1", "Nhp2","Mif","Ran","Mki67","Stmn1","Ccr8","Eno1"  ,"doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+
+
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, group.by = "annot.general", features = c( "Il1r2"))+RotatedAxis()
+```
+
+
+```{r,warning=FALSE, echo=FALSE}
+clusters=levels(subset$annot.detailed)
+DEgenes_list<-list()
+for ( i in clusters){
+DEgenes_list[[i]]<-  FindMarkers(subset, group.by="annot.detailed",ident.1=i,min.cells.group=1, max.cells.per.ident = 1000, pseudocount.use = 0.1)
+DEgenes_list[[i]]$gene=rownames(DEgenes_list[[i]])
+DEgenes_list[[i]]$cluster.1=i
+DEgenes_list[[i]]$pseudocount.use=0.1
+DEgenes_list[[i]]$max.cells.per.ident=1000
+}
+saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
+```
+
+```{r,warning=FALSE, echo=FALSE}
+DEgenes_list=readRDS( paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.general.rds"))
+```
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, features = c( "Il1r2"))+RotatedAxis()
+```
+```{r}
+i="Il1r2.hi.Bmyc.vs.Il1r2.lo"
+  DEgenes_list[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi Bmyc-hi", ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F, logfc.threshold = 0, min.pct = 0)
+  DEgenes_list[[i]]$cluster=i
+  DEgenes_list[[i]]$pseudocount=0.01
+  DEgenes_list[[i]]$max.cells.per.ident=1000
+  DEgenes_list[[i]]$gene=row.names(DEgenes_list[[i]])
+  saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
+```
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2.hi.Bmyc.vs.Il1r2.lo"
+VolcanoPlot(  DEgenes_list[[i]], p_valmax_col = 0.5)
+```
+
+```{r}
+selected.genes=rownames( DEgenes_list[[i]][ DEgenes_list[[i]]$p_val<1e-4 &  DEgenes_list[[i]]$avg_logFC>1,])
+length(selected.genes)
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = unique(c( "Il1r2",selected.genes[1:40])))+RotatedAxis()
+```
+```{r , fig.height =3, fig.width =14}
+DotPlot(subset, features =selected.genes[41:93])+RotatedAxis()
+```
+
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(MC38_Tregs, features = unique(c("Il1r2",selected.genes[1:40])))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r , fig.height =3, fig.width =7}
+DotPlot(MC38_Tregs, features =c("Il1r2", "Polr3c" ,   "Tff1","Myadm","Mllt11", "Dars","Ripk3","Hmgn5","Scnm1"   ) )+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+```{r , fig.height =8, fig.width =12}
+FeaturePlot(MC38_Tregs, features = c("Il1r2", "Polr3c" ,   "Tff1","Myadm","Mllt11", "Dars","Ripk3","Hmgn5","Scnm1"   ), reduction ="umapHarmonyTheta1PC25")+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r , fig.height =4, fig.width = 6}
+DimPlot(MC38_Tregs,label=T,repel=T, cols=cols.use,reduction ="umapHarmonyTheta1PC25")
+```
+
+```{r , fig.height =8, fig.width =12}
+FeaturePlot(subset, features = c("Il1r2", "Polr3c" ,   "Tff1","Myadm","Mllt11", "Dars","Ripk3","Hmgn5","Scnm1"  ) ,reduction = paste0("umapPC",dims.use.subset))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+```{r , fig.height =4, fig.width = 4}
+DimPlot(subset,cells.highlight = WhichCells(subset, idents="Treg Il1r2-hi Bmyc-hi"), sizes.highlight = 0.8,reduction = paste0("umapPC",dims.use.subset))+NoLegend()
+```
+
+
+
+Export gene names as a csv file for metascape
+```{r}
+write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
+```
+
+
+```{r}
+GO.metascape=readxl::read_xlsx( paste0(path.output,"metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
+#Select only the main pathways
+GO.metascape$group=sapply(strsplit(GO.metascape$GroupID, "_"), "[[",2)
+GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
+```
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=1
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=2
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+
+```{r}
+i="Il1r2.hi.ribo.vs.Il1r2.lo"
+  DEgenes_list[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi ribo-hi", ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes_list[[i]]$cluster=i
+  DEgenes_list[[i]]$pseudocount=0.01
+  DEgenes_list[[i]]$max.cells.per.ident=1000
+  DEgenes_list[[i]]$gene=row.names(DEgenes_list[[i]])
+saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
+```
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2.hi.ribo.vs.Il1r2.lo"
+VolcanoPlot(  DEgenes_list[[i]], p_valmax_col = 0.5, logFCmin_col = 0.5)
+```
+
+```{r}
+selected.genes=rownames( DEgenes_list[[i]][ DEgenes_list[[i]]$p_val<1e-3 &  DEgenes_list[[i]]$avg_logFC>0.5,])
+length(selected.genes)
+```
+
+
+```{r , fig.height =3, fig.width =14}
+DotPlot(subset, features = unique(c( "Il1r2",selected.genes)))+RotatedAxis()
+```
+
+```{r , fig.height =8, fig.width =12}
+FeaturePlot(subset, features = c("Rps7","Rpl32","Vim","Uba52","Mrpl32", "Mrpl11","Tff1" ,   "Hilpda", "Emd","Ddit4","Ppil3","Ero1l"  ) ,reduction = paste0("umapPC",dims.use.subset))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+```{r , fig.height =4, fig.width = 4}
+DimPlot(subset,cells.highlight = WhichCells(subset, idents="Treg Il1r2-hi ribo-hi" ), sizes.highlight = 0.8,reduction = paste0("umapPC",dims.use.subset))+NoLegend()
+```
+
+```{r , fig.height =8, fig.width =12}
+FeaturePlot(MC38_Tregs, features = c("Rps7","Rpl32","Vim","Uba52","Mrpl32", "Mrpl11","Tff1" ,   "Hilpda", "Emd","Ddit4","Ppil3","Ero1l"  ), reduction ="umapHarmonyTheta1PC25")+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r , fig.height =4, fig.width = 6}
+DimPlot(MC38_Tregs,label=T,repel=T, cols=cols.use,reduction ="umapHarmonyTheta1PC25")
+```
+
+
+Export gene names as a csv file for metascape
+```{r}
+write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
+```
+
+
+```{r}
+GO.metascape=readxl::read_xlsx( paste0(path.output,"metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
+#Select only the main pathways
+GO.metascape$group=sapply(strsplit(GO.metascape$GroupID, "_"), "[[",2)
+GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
+```
+
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=1
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+
+```{r}
+i="Il1r2.hi.IFN.vs.Il1r2.lo"
+  DEgenes_list[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi IFN", ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes_list[[i]]$cluster=i
+  DEgenes_list[[i]]$pseudocount=0.01
+  DEgenes_list[[i]]$max.cells.per.ident=1000
+  DEgenes_list[[i]]$gene=row.names(DEgenes_list[[i]])
+saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
+```
+
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2.hi.IFN.vs.Il1r2.lo"
+VolcanoPlot(  DEgenes_list[[i]], p_valmax_col = 0.5, logFCmin_col = 0.5)
+```
+
+```{r}
+selected.genes=rownames( DEgenes_list[[i]][ DEgenes_list[[i]]$p_val<1e-3 &  DEgenes_list[[i]]$avg_logFC>0.5,])
+length(selected.genes)
+```
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = c( "Il1r2",selected.genes))+RotatedAxis()
+```
+
+
+Export gene names as a csv file for metascape
+```{r}
+write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
+```
+
+
+```{r}
+GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
+#Select only the main pathways
+GO.metascape$group=sapply(strsplit(GO.metascape$GroupID, "_"), "[[",2)
+GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
+```
+
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=1
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+
+```{r}
+i="Il1r2.hi.IFN.vs.Il1r2.lo.exclIFN"
+  DEgenes_list[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi IFN", ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
+  DEgenes_list[[i]]$cluster=i
+  DEgenes_list[[i]]$pseudocount=0.01
+  DEgenes_list[[i]]$max.cells.per.ident=1000
+  DEgenes_list[[i]]$gene=row.names(DEgenes_list[[i]])
+saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
+```
+
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2.hi.IFN.vs.Il1r2.lo.exclIFN"
+VolcanoPlot(  DEgenes_list[[i]], p_valmax_col = 1, logFCmin_col = 0.5)
+```
+
+```{r}
+selected.genes=rownames( DEgenes_list[[i]][ DEgenes_list[[i]]$p_val<1e-2 &  DEgenes_list[[i]]$avg_logFC>0.5,])
+length(selected.genes)
+```
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, features = c( "Il1r2",selected.genes[1:50]))+RotatedAxis()
+```
+
+
+Export gene names as a csv file for metascape
+```{r}
+write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
+```
+
+
+```{r}
+GO.metascape=readxl::read_xlsx( paste0(path.output,"metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
+#Select only the main pathways
+GO.metascape$group=sapply(strsplit(GO.metascape$GroupID, "_"), "[[",2)
+GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
+```
+
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=1
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+gset.symbols
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols, dot.size = 2, max.overlaps.use=20)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=2
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+
+```{r}
+i="Il1r2.hi.all.vs.Il1r2.lo"
+  DEgenes_list[[i]]<-FindMarkers(subset, ident.1 =c( "Treg Il1r2-hi IFN","Treg Il1r2-hi Bmyc-hi","Treg Il1r2-hi ribo-hi"), ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F, logfc.threshold = 0, min.pct = 0)
+  DEgenes_list[[i]]$cluster=i
+  DEgenes_list[[i]]$pseudocount=0.01
+  DEgenes_list[[i]]$max.cells.per.ident=1000
+  DEgenes_list[[i]]$gene=row.names(DEgenes_list[[i]])
+saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
+```
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2.hi.all.vs.Il1r2.lo"
+VolcanoPlot(  DEgenes_list[[i]], p_valmax_col = 0.3, logFCmin_col = 0.3, logFCmin_neg_col = -0.3)
+```
+
+```{r}
+selected.genes=rownames( DEgenes_list[[i]][ DEgenes_list[[i]]$p_val<1e-3 &  DEgenes_list[[i]]$avg_logFC>0.5,])
+length(selected.genes)
+```
+
+```{r , fig.height =3, fig.width =15}
+DotPlot(subset, features =unique( c( "Il1r2",selected.genes)))+RotatedAxis()
+```
+
+
+Export gene names as a csv file for metascape
+```{r}
+write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
+```
+
+
+```{r}
+GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
+#Select only the main pathways
+GO.metascape$group=sapply(strsplit(GO.metascape$GroupID, "_"), "[[",2)
+GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
+```
+
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=1
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=2
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=3
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=4
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+
+```{r}
+i="Il1r2.ih.prolifl.vs.Il1r2.lo"
+  DEgenes_list[[i]]<-FindMarkers(subset, ident.1 =c( "Treg Il1r2-hi prolif"), ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F, logfc.threshold = 0, min.pct = 0)
+  DEgenes_list[[i]]$cluster=i
+  DEgenes_list[[i]]$pseudocount=0.01
+  DEgenes_list[[i]]$max.cells.per.ident=1000
+  DEgenes_list[[i]]$gene=row.names(DEgenes_list[[i]])
+saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
+```
+
+
+```{r , fig.height =5, fig.width =12}
+i="Il1r2.ih.prolifl.vs.Il1r2.lo"
+VolcanoPlot(  DEgenes_list[[i]], p_valmax_col = 0.05, logFCmin_col = 1, logFCmin_neg_col = -0.3)
+```
+
+```{r}
+selected.genes=rownames( DEgenes_list[[i]][ DEgenes_list[[i]]$p_val<1e-8 &  DEgenes_list[[i]]$avg_logFC>1,])
+length(selected.genes)
+```
+
+```{r , fig.height =4, fig.width =15}
+DotPlot(subset, features =unique( c( "Il1r2",selected.genes[1:50])))+RotatedAxis()
+```
+
+
+Export gene names as a csv file for metascape
+```{r}
+write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
+```
+
+
+```{r}
+GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
+#Select only the main pathways
+GO.metascape$group=sapply(strsplit(GO.metascape$GroupID, "_"), "[[",2)
+GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
+```
+
+
+```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+index=1
+gset.symbols=GO.metascape.summary[index,]$Symbols
+gset.symbols=strsplit(gset.symbols, ",")[[1]]
+GOterm=GO.metascape.summary[index,"Description"]
+VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", GOterm))
+```
+
+```{r,warning=FALSE, echo=FALSE}
+DEgenes_list=readRDS( paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
+```
+
+
+```{r,warning=FALSE, echo=FALSE}
+names(DEgenes_list)=make.names(names(DEgenes_list))
+### Save the differentially expressed genes as an excel table
+writexl::write_xlsx(DEgenes_list,paste0(path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.xlsx"))
+```
+
+
+```{r,warning=FALSE, echo=FALSE}
+clusters=levels(subset$annot.general)
+DEgenes_list<-list()
+for ( i in clusters){
+DEgenes_list[[i]]<-  FindMarkers(subset, group.by="annot.general",ident.1=i,min.cells.group=1, max.cells.per.ident = 1000, pseudocount.use = 0.1)
+DEgenes_list[[i]]$gene=rownames(DEgenes_list[[i]])
+DEgenes_list[[i]]$cluster.1=i
+DEgenes_list[[i]]$pseudocount.use=0.1
+DEgenes_list[[i]]$max.cells.per.ident=1000
+}
+saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.general.rds"))
+```
+
+
+
+```{r , fig.height =3.5, fig.width =5}
+DotPlot(subset, group.by = "annot.general", features = c( "Il1r2"))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r,warning=FALSE, echo=FALSE}
+DEgenes_list=readRDS( paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.general.rds"))
+```
+```{r,warning=FALSE, echo=FALSE}
+names(DEgenes_list)=make.names(names(DEgenes_list))
+### Save the differentially expressed genes as an excel table
+writexl::write_xlsx(DEgenes_list,paste0(path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.general.xlsx"))
+```
+
+
+
+
+
+
+
+```{r ,warning=FALSE}
+Idents(seur_full)="annot"
+for ( i in unique(Idents(subset)))
+  Idents(seur_full, WhichCells(subset, idents=i))=i
+seur_full$annot.detailed=Idents(seur_full)
+```
+
+
+```{r , fig.height = 6, fig.width =10,warning=FALSE}
+DimPlot(seur_full, group.by =  "annot.detailed",label=T,repel=T, cols=cols.use) 
+```
+
+### subset T/NK cells
+
+```{r}
+seur=seur_full[,WhichCells(seur_full, idents=c("Treg Il1r2-hi prolif" , "Treg IFN" ,  "Treg Il1r2-hi ribo-hi" ,"Treg Il1r2-hi IFN",   "Treg Csf1" ,         "Treg Ifngr1" , "Treg Il1r2-hi Bmyc-hi", "Treg Ifngr1 Ccr2",    "Treg"  ,    "CD4T"    ,    "CD8T"  ,     "T prolif" , "NK"       ))]
+```
+
+
+```{r,warning=FALSE}
+dim(seur)
+```
+
+
+ Standard preprocessing and clustering of the subsetted dataset
+```{r,warning=FALSE}
+seur <-  NormalizeData(seur,verbose = F) %>% FindVariableFeatures(verbose = F) %>% ScaleData(verbose = F) %>% RunPCA( features = VariableFeatures(seur) ,verbose = F)
+```
+```{r , fig.height = 4, fig.width = 6,warning=FALSE}
+ElbowPlot(object = seur,ndims =50)
+```
+```{r , fig.height = 10, fig.width = 12}
+DimHeatmap(seur, dims = 1:21, balanced = TRUE)
+```
+```{r , fig.height = 10, fig.width = 12}
+DimHeatmap(seur, dims = 22:39, balanced = TRUE)
+```
+```{r,warning=FALSE}
+dims.use<-21
+```
+
+
+
+```{r}
+seur <- RunUMAP(seur, dims = 1:dims.use,verbose =F ) 
+```
+
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(seur,label=T,repel=T,cols= cols.use) 
+```
+
+
+
+```{r}
+seur$annot.general=plyr::mapvalues(Idents(seur), from=c( "Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2", "Treg Il1r2-hi ribo-hi" ), to=c("Treg","Treg","Treg", "Treg Il1r2-hi" ))
+```
+
+
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(seur,label=T,repel=T,cols= cols.use, group.by ="annot.general" ) 
+```
+select.cells=CellSelector(DimPlot(seur,cols= cols.use, group.by ="annot.general" ) )
+Idents(seur, cells=select.cells)="NK2"
+
+```{r }
+DEG=FindMarkers(seur, ident.1 = "NK2", ident.2 = "NK")
+```
+```{r , fig.height =4, fig.width =12}
+VolcanoPlot(DEG)
+```
+```{r , fig.height = 4, fig.width =13}
+DotPlot(seur,features=c("Cd3e","Cd3g","Foxp3","Il2ra","Tnfrsf9","Ikzf2","Izumo1r","Mki67","Stmn1","Cd4","Cd40lg","S1pr1","Cd8a","Cd8b1","Xcl1","Klra7","Klrb1c","Ncr1","Gzma","Cd79a","Cd79b","Cd19","Ms4a1","Csf3r","Retnlg","S100a8","Lyz2","Fn1","Chil3","F13a1","Vcan","Tgfbi","Adgre1","C1qa","Ms4a7","Lgmn","H2-Aa","Cd74","H2-DMb1","Cd209a","Napsa","Kmo","Ccr9","Siglech","Pacsin1","Xcr1","Rab7b","Clec9a","Flt3","Cacnb3","Ccl22","Nudt17","doublet.score"  ))+RotatedAxis()+theme(axis.title=element_blank())
+```
+```{r , fig.height =8, fig.width =12,warning=FALSE}
+FeaturePlot(seur,c("C1qa","C1qb","Lyz2","Chil3","Vcan","H2-Aa","Cd209a","Csf3r","doublet.score")) 
+```
+
+
+```{r }
+seur=seur[,WhichCells(seur, idents="NK2", invert=T)]
+```
+
+```{r,warning=FALSE}
+seur <-  NormalizeData(seur,verbose = F) %>% FindVariableFeatures(verbose = F) %>% ScaleData(verbose = F) %>% RunPCA( features = VariableFeatures(seur) ,verbose = F)
+```
+```{r , fig.height = 4, fig.width = 6,warning=FALSE}
+ElbowPlot(object = seur,ndims =50)
+```
+```{r , fig.height = 10, fig.width = 12}
+DimHeatmap(seur, dims = 1:21, balanced = TRUE)
+```
+```{r , fig.height = 10, fig.width = 12}
+DimHeatmap(seur, dims = 22:39, balanced = TRUE)
+```
+```{r,warning=FALSE}
+dims.use<-21
+```
+
+
+
+```{r}
+seur <- RunUMAP(seur, dims = 1:dims.use,verbose =F ) 
+```
+
+```{r}
+new.order=c ("NK",  "CD8T" ,"T prolif" , "CD4T", "Treg","Treg Csf1", "Treg Ifngr1","Treg Ifngr1 Ccr2"  ,"Treg IFN","Treg Il1r2-hi IFN" ,"Treg Il1r2-hi ribo-hi","Treg Il1r2-hi Bmyc-hi","Treg Il1r2-hi prolif"             )
+new.order[!new.order %in% levels( Idents(seur))]
+levels( Idents(seur))[!levels( Idents(seur)) %in%new.order]
+```
+
+
+
+```{r}
+Idents(seur)=factor( Idents(seur), levels=new.order)
+seur$annot.detailed=Idents(seur)
+seur$annot=plyr::mapvalues(Idents(seur), from=c( "Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2", "Treg Il1r2-hi ribo-hi" ), to=c("Treg","Treg","Treg", "Treg Il1r2-hi" ))
+seur$annot.general=plyr::mapvalues(seur$annot, from=c( "Treg Il1r2-hi prolif","Treg Il1r2-hi IFN" ,"Treg Il1r2-hi Bmyc-hi"  ), to=c( "Treg prolif","Treg Il1r2-hi" ,"Treg Il1r2-hi"  ))
+```
+
+
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(seur,label=T,repel=T,cols= cols.use) 
+```
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(seur,label=T,repel=T,cols= cols.use, group.by ="annot" ) 
+```
+```{r , fig.height =6, fig.width =7,warning=FALSE}
+DimPlot(seur,label=T,repel=T,cols= cols.use, group.by ="annot.general" ) 
+```
+
+```{r , fig.height = 4, fig.width =12}
+DotPlot(seur,features=c("Xcl1","Klra7","Klrb1c","Ncr1","Gzma" ,"Cd3e","Cd3g","Cd8a","Cd8b1", "Cd4","Cd40lg","S1pr1","Foxp3","Il2ra","Ctla4","Cst7" ,"Bcl2a1b","Nkg7","Cxcr6" ,"Csf1","Rel"  , "Btg1","Ifngr1", "Il7r","Icos", "Ccr2","Ccl5","Fus","Gzmb","Ifit3","Slfn8","Ifit1",  "Ifi203","Isg15" ,"Gbp7" ,"Ly6a","Il1r2" ))+RotatedAxis()+theme(axis.title=element_blank())
+```
+
+```{r , fig.height =4, fig.width =12}
+DotPlot(seur, features = c("Il1r2","Mrpl32","Pet100","Batf","Dgat1","Jarid2","Ptbp1","Il2rg","Bmp2k","perc.ribo","Rpl17","Fau",  "Hilpda" ,"Chchd10","Ppil3","Vim","Bmyc" , "Ddt","Dars","Slc39a7","Dnajb14","Tff1","Ripk3","Hmgn5","Scnm1", "Zfp593","Nhp2","Mif","Ran","Mki67","Stmn1","Ccr8","Eno1" ,"Bnip3" ,"doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+
+```{r , fig.height =3.5, fig.width =5}
+DotPlot(subset,features = c( "Il1r2","Ccr8"))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+
+```{r}
+i="Treg.Il1r2.hi.Bmyc.hi"
+selected.genes= DEgenes_MC38_Tregs [[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.35,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, group.by = "annot.general", features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, group.by = "annot.detailed", features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(MC38_Tregs, features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+```{r , fig.height =10, fig.width =15}
+FeaturePlot(MC38_Tregs, features = c("Il1r2","Bmyc","Rel","Relb","Cd81","Bcl2a1b","Gpr183", "Gadd45b", "Chchd10","Penk" ,"Pcsk1" , "Ccdc184" , "Cd83" , "Bhlhe40" , "Icam1" ,"Nfkb2","Nrip1","Fas" ,"Marcksl1","Hspa9"  ),ncol=5, reduction ="umapHarmonyTheta1PC25")+RotatedAxis()+theme(axis.title = element_blank())
+```
+```{r , fig.height =4, fig.width = 4}
+DimPlot(MC38_Tregs,cells.highlight = WhichCells(MC38_Tregs, idents="Treg Il1r2-hi Bmyc-hi"), sizes.highlight = 0.3,reduction ="umapHarmonyTheta1PC25")+NoLegend()
+```
+
+```{r , fig.height =4, fig.width = 6}
+DimPlot(MC38_Tregs,label=T,repel=T, cols=cols.use,reduction ="umapHarmonyTheta1PC25")
+```
+```{r , fig.height =2.5, fig.width =10}
+DotPlot(MC38_Tregs, features = c("Il1r2","Bmyc","Rel","Relb","Cd81","Bcl2a1b","Gpr183", "Gadd45b", "Chchd10","Penk" ,"Pcsk1" , "Ccdc184" , "Cd83" , "Bhlhe40" , "Icam1" ,"Nfkb2","Nrip1","Fas" ,"Marcksl1","Hspa9"    ))+RotatedAxis()+theme(axis.title = element_blank())
+```
+```{r , fig.height =10, fig.width =15}
+FeaturePlot(subset, c("Il1r2","Bmyc","Rel","Relb","Cd81","Bcl2a1b","Gpr183", "Gadd45b", "Chchd10","Penk" ,"Pcsk1" , "Ccdc184" , "Cd83" , "Bhlhe40" , "Icam1" ,"Nfkb2","Nrip1","Fas" ,"Marcksl1","Hspa9"   ),ncol=5,reduction = paste0("umapPC",dims.use.subset))+RotatedAxis()+theme(axis.title = element_blank())
+```
+```{r , fig.height =2.5, fig.width =10}
+DotPlot(subset, group.by = "annot.general", features = c("Il1r2","Bmyc","Rel","Relb","Cd81","Bcl2a1b","Gpr183", "Gadd45b", "Chchd10","Penk" ,"Pcsk1" , "Ccdc184" , "Cd83" , "Bhlhe40" , "Icam1" ,"Nfkb2","Nrip1","Fas" ,"Marcksl1","Hspa9"    ))+RotatedAxis()+theme(axis.title = element_blank())
+```
+```{r , fig.height =4, fig.width = 4}
+DimPlot(subset,cells.highlight = WhichCells(subset, idents="Treg Il1r2-hi Bmyc-hi"), sizes.highlight = 0.8,reduction = paste0("umapPC",dims.use.subset))+NoLegend()
+```
+
+
+```{r , fig.height =4, fig.width = 6}
+DimPlot(subset, group.by = "annot.general",cols=c("Treg"="grey"   , "Treg IFN"="grey" ,   "Treg Il1r2-hi IFN" ="darkorchid",  "Treg Il1r2-hi" ="darkolivegreen1" ,  "Treg Il1r2-hi Bmyc-hi"="magenta" ,"Treg Il1r2-hi prolif"="goldenrod1" ), sizes.highlight = 0.8,reduction = paste0("umapPC",dims.use.subset))
+```
+
+
+```{r}
+i= "Treg.Il1r2.hi.Ccr8.hi"
+selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.3,"gene"]
+```
+
+
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, group.by = "annot.general",features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+```{r , fig.height =3, fig.width =12}
+DotPlot(subset, group.by = "annot.detailed", features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+```{r , fig.height =3, fig.width =12}
+DotPlot(MC38_Tregs, features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+```{r , fig.height =8, fig.width =12}
+FeaturePlot(MC38_Tregs, features = c("Il1r2","Ccr8",  "Ccl4" , "Rilpl2" , "Mt1",  "Sv2c"  ,"Il10",  "Bcl2a1d", "Vsir","Plk3","Eea1","Irf8"   ), reduction ="umapHarmonyTheta1PC25")+RotatedAxis()+theme(axis.title = element_blank())
+```
+```{r , fig.height =4, fig.width = 6}
+DimPlot(MC38_Tregs,label=T,repel=T, cols=cols.use,reduction ="umapHarmonyTheta1PC25")
+```
+
+```{r , fig.height =8, fig.width =12}
+FeaturePlot(subset, features = c("Il1r2","Ccr8",  "Ccl4" , "Rilpl2" , "Mt1",  "Sv2c"  ,"Il10",  "Bcl2a1d", "Vsir","Plk3","Eea1","Irf8"   ) ,reduction = paste0("umapPC",dims.use.subset))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+```{r , fig.height = 3.8, fig.width =14}
+DotPlot(MC38_Tregs,features=c("Cd4","Foxp3","Ikzf2",  "Ctla4","Saraf","Klf2","Klf3","Itgb1","Btg2","Ier2","Fos","Lef1","Cd7"   ,"Tnfrsf9","Il2ra", "Arl5a","Ctla2a","Socs2","Eno1" ,"Cxcr3","Bnip3" ,"Ifit3","Ifit2", "Isg15","Sell"   ,"Lag3","Pdcd1","Tigit","Ccl5","Nkg7","Il1r2","Ccr8" ,"Cst7" ,"Bcl2a1b",  "Ccl4"  , "Rilpl2" ,"Bcl2a1d","Il10","Vsir","Irf8"    ,"Bmyc","Nrip1", "Chchd10","Bhlhe40" ,"Icam1","Nfkbia","Ran","Mki67","Stmn1"))+RotatedAxis()
+```
+
+
+
+```{r , fig.height =4, fig.width =15}
+DotPlot(subset, features = c( "Foxp3","Il2ra","Ctla4","Cst7" ,"Bcl2a1b","Nkg7","Cxcr6" ,"Csf1","Rel"  , "Btg1","Ifngr1", "Il7r","Icos", "Ccr2","Ccl5","Fus","Gzmb","Ifit3","Slfn8","Ifit1",  "Ifi203","Isg15" ,"Gbp7" ,"Ly6a","Il1r2","Mrpl32","Pet100","Batf","Dgat1","Jarid2","Ptbp1","Il2rg","Bmp2k","perc.ribo","Rpl17","Fau",  "Hilpda" ,"Chchd10","Ppil3","Vim","Bmyc" , "Ddt","Dars","Slc39a7","Dnajb14","Tff1","Ripk3","Hmgn5","Scnm1", "Zfp593","Nhp2","Mif","Ran","Mki67","Stmn1","Ccr8","Eno1" ,"Bnip3" ,"doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+```{r , fig.height =3.5, fig.width =5}
+DotPlot(subset,  group.by = "annot.general",features = c( "Il1r2","Ccr8"))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+```{r , fig.height =4, fig.width =6,warning=FALSE}
+DimPlot(subset, group.by = "annot.general",label=T,repel=T,cols= cols.use,reduction = paste0("umapPC",dims.use.subset)) 
+```
+
+```{r , fig.height =4, fig.width =12}
+DotPlot(subset, group.by = "annot.general", features = c( "Foxp3","Il2ra","Ctla4","Ccl5","Ly6e","Ifit3","Slfn8","Ifit1",  "Ifi203","Isg15" ,"Gbp7" ,"Ly6a","Il1r2","Pet100","Batf","Dgat1","perc.ribo","Rpl17","Fau", "Ddit4", "Hilpda" ,"Chchd10","Ppil3","Vim","Bmyc" , "Ddt","Polr3c","Dars","Slc39a7","Dnajb14","Tff1","Ripk3","Hmgn5","Scnm1", "Zfp593","Nhp2","Mif","Ran","Ccr8","Eno1"  ,"doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
+```
+
+```{r , fig.height =3.7, fig.width =12}
+DotPlot(subset, group.by = "annot.general", features = c( "Foxp3","Il2ra","Ctla4","Ccl5","Ly6e","Ifit3","Slfn8","Ifit1",  "Ifi203","Isg15" ,"Gbp7" ,"Ly6a","Il1r2","Pet100","Batf","Dgat1","perc.ribo","Rpl17","Fau",  "Hilpda" ,"Chchd10","Ppil3","Vim","Bmyc" , "Ddt","Dars","Slc39a7","Dnajb14","Tff1","Ripk3","Hmgn5","Scnm1","Polr3c","Nhp2","Mif","Ran","Mki67","Stmn1"))+RotatedAxis()+theme(axis.title = element_blank())
+```
+
+```{r , fig.height =4, fig.width =4.3,warning=FALSE, echo=FALSE}
+FeaturePlot(object = subset,reduction = paste0("umapPC",dims.use.subset), c("Il1r2"))
+```
+
+```{r , fig.height =3, fig.width =5}
+DotPlot(subset, features = c( "Il1r2"))+RotatedAxis()
+```
+
+
+```{r , fig.height =5, fig.width =5}
+VlnPlot(subset, features = c( "Il1r2"), group.by = "annot.general", cols=cols.use)+RotatedAxis()+NoLegend()+theme(axis.title.x=element_blank())
+```
+
+
+```{r}
+saveRDS(subset, paste0(path.output,subset_name,"_",dataset.name,".seurat.rds"))
+```
+
+```{r}
+subset=readRDS( paste0(path.output,subset_name,"_",dataset.name,".seurat.rds"))
+dims.use.subset=25
+```
+```{r}
+subset
+```
+
+
+
+```{r}
+saveRDS(seur, paste0(path.output,"T_NK_subset_",dataset.name,".seurat.rds"))
+```
+
+```{r}
+seur=readRDS( paste0(path.output,"T_NK_subset_",dataset.name,".seurat.rds"))
+```
+```{r}
+seur
+```
+
+```{r}
+seur_full
+```
+```{r,warning=FALSE}
+sessionInfo()
+```
+
+
+
+
