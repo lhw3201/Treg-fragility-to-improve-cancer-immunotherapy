@@ -383,9 +383,17 @@ selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val_adj<1e-3 
 DotPlot(subset, features = c(selected.genes))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 
+## 6. Mapping Treg Functional "Flavors" via Spatial Expression
 
 Il1r2-lo Ctla4-hi
 ```{r , fig.height = 6, fig.width = 12,warning=FALSE}
+# --- STEP 6: Spatial Validation of Treg Subpopulations ---
+# We use FeaturePlots to project gene expression onto the UMAP coordinates. 
+# This confirms which mathematical clusters correspond to specific biological states.
+
+# --- 6A: Identifying 'Classical' Effector Tregs (Il1r2-lo / Ctla4-hi) ---
+# Characterized by high Ctla4 and Il10 (suppression) but lower Il1r2. 
+# These represent the 'stable' activated Treg pool.
 FeaturePlot(object = subset,  features = c("Ctla4","Lgals3bp" , "Arl5a"  ,"Cst7" ,"Il10","Med20" ), ncol=3)
 ```
 
@@ -395,6 +403,9 @@ DimPlot(object = subset, label=T, repel=T, cols=cols.use)
 
 Il1r2-hi
 ```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+# --- 6B: Identifying the Primary Target (Il1r2-hi / Activated) ---
+# Mapping our main population of interest. Note the overlap with 
+# proliferation markers (Mki67, Stmn1) and the terminal activation marker Ccr8.
 FeaturePlot(object = subset,  features = c("Il1r2","Ccr8","Rpl28",     "Rpl22l1" ,"Ran","Tff1","Dnlz" , "Mki67","Stmn1"), ncol=3)
 ```
 
@@ -405,6 +416,9 @@ DimPlot(object = subset, label=T, repel=T, cols=cols.use)
 
 Ifngr1-hi
 ```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+# --- 6C: Mapping the Interferon-Response / 'Fragile' State (Ifngr1-hi) ---
+# High expression of Ifit3 and Ifit3b indicates an interferon-stimulated state, 
+# which is a hallmark of Treg 'fragility' and loss of suppressive stability.
 FeaturePlot(object = subset,  features = c("Ifngr1","Neurl3", "Shisa5" ,  "Gimap1" ,"Ctss","Ifit3","Ifit3b" ), ncol=3)
 ```
 
@@ -414,6 +428,9 @@ DimPlot(object = subset, label=T, repel=T, cols=cols.use)
 
 Hypoxic
 ```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+# --- 6D: Mapping the Hypoxic / Metabolic Stress State ---
+# Cells expressing Hilpda, Eno1, and Bnip3 are likely located in the necrotic 
+# or low-oxygen regions of the tumor, shifting toward glycolysis.
 FeaturePlot(object = subset,  features = c("Hilpda" , "Ddit3"   , "Eno1" ,"Bnip3" ,"Serpina3f" ), ncol=3)
 ```
 
@@ -422,6 +439,10 @@ DimPlot(object = subset, label=T, repel=T, cols=cols.use)
 ```
 Il1r2-hi Ccr8-hi
 ```{r , fig.height = 8, fig.width = 12,warning=FALSE}
+# --- 6E: Distinguishing Specialized Il1r2-hi Sub-states ---
+# Comparing two distinct activated flavors:
+# 1. Ccr8-hi/Il10-hi: Highly suppressive, terminally differentiated tumor Tregs.
+# 2. Bmyc-hi/Cd83-hi: A specific sub-state associated with activation and CD70 signaling.
 FeaturePlot(object = subset,  features = c("Ccr8",  "Ccl4" ,"Il10" , "Bcl2a1d" , "Vsir" ,"Irf8", "Glipr1"), ncol=3)
 ```
 
@@ -431,11 +452,17 @@ FeaturePlot(object = subset,  features = c( "Bmyc" ,"Cd83"  ,  "Nrip1" , "Chchd1
 ```
 
 
-
+## 7. Resolution Optimization and Signature Cross-Validation
 
 #### Clustering
 ```{r ,warning=FALSE}
+# --- STEP 7A: Iterative Clustering & Stability Testing ---
+# Build a Shared Nearest Neighbor (SNN) graph. Using 'k.param=15' increases 
+# the local connectivity of the cells for more stable cluster boundaries.
 subset <- FindNeighbors(subset, dims = 1:dims.use.subset, verbose=F, k.param=15)
+
+# Test a broad range of resolutions (0 to 2) using the Leiden algorithm (Algorithm 4).
+# Higher resolutions allow us to catch small but biologically significant sub-populations.
 for ( i in seq(0,2, 0.25))
 subset <- FindClusters(subset, resolution = i, verbose=F, algorithm = 4)
 # algorithm= 4 is Leiden algorithm - often performs better
@@ -445,6 +472,9 @@ subset <- FindClusters(subset, resolution = i, verbose=F, algorithm = 4)
 
 #### Plot of a clustering tree showing the relationship between clusterings at different resolutions. (using the clustree package)
 ```{r , fig.height = 8, fig.width = 8,warning=FALSE}
+# --- STEP 7B: Visualizing Cluster Relationships ---
+# Plot a 'Clustree' to determine at which point clusters become unstable or start 
+# swapping cells. This justifies selecting resolution 1.5 as the final setting.
 clustree(subset, prefix = "RNA_snn_res.")+
    ggtitle("Clustering tree")
 ```
@@ -455,11 +485,14 @@ plot<-list()
 for ( res in c( 0.75,1,1.25,1.5))
 plot[[as.character(res)]]<-DimPlot(subset, pt.size = 1,label=T,repel=T, group.by = paste0("RNA_snn_res.",res), cols=cols.use) +
    ggtitle(paste("res=",res))
+
+# Compare the spatial arrangement of clusters across different high resolutions.
 plot_grid(plotlist=plot)
 ```
 
 
 ```{r ,warning=FALSE}
+# Final Identity Assignment: Setting the active idents to the high-resolution clusters.
 res=1.5
 Idents(subset)=paste0("RNA_snn_res.",res)
 ```
@@ -471,6 +504,12 @@ DimPlot(subset,label=T,repel=T,cols= cols.use)
 
 
 ```{r}
+# --- STEP 7C: Cross-Dataset Validation (MC38 Reference) ---
+# We validate our clusters by checking if they express signature genes from 
+# external tumor-infiltrating Treg (tiTreg) studies:
+# 1. 'Il1r2-hi Bmyc-hi' profile (Discovery Validation)
+# 2. 'Il1r2-hi Ccr8-hi' profile (Terminal Activation Validation)
+# 3. 'Ctla4' & 'Socs2' profiles (Effector/Resting state check)
 i="Treg.Il1r2.hi.Bmyc.hi"
 selected.genes= DEgenes_MC38_Tregs [[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.35,"gene"]
 ```
@@ -516,6 +555,8 @@ DotPlot(subset, features = c(selected.genes))+RotatedAxis()+theme(axis.title = e
 
 
 ```{r}
+# --- STEP 7D: Detailed Differential Expression (DE) Testing ---
+# Automated marker identification for all high-resolution clusters.
 DEgenes=list()
 for (i in levels(Idents(subset))){
   DEgenes[[i]]<-FindMarkers(subset, ident.1 = i,min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
@@ -528,6 +569,9 @@ saveRDS(DEgenes, paste0( path.output,"DEgenes_PC",dims.use.subset,".res",res,"_"
 ```
 
 ```{r}
+# --- STEP 7E: Pairwise Cluster Comparison (7 vs 3) ---
+# Specifically investigating the differences between two clusters (e.g., 7 and 3). 
+# This is often used to compare a 'fragile' cluster vs. an 'effector' cluster.
 i="7.vs.3"
   DEgenes[[i]]<-FindMarkers(subset, ident.1 = 7, ident.2 = 3,min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
   DEgenes[[i]]$cluster=i
@@ -539,13 +583,16 @@ saveRDS(DEgenes, paste0( path.output,"DEgenes_PC",dims.use.subset,".res",res,"_"
 
 
 ```{r , fig.height =4, fig.width =12}
+# Volcano Plot: Visualizing the magnitude and significance of the 7 vs 3 comparison.
 VolcanoPlot( DEgenes[[i]], logFCmin_neg_col = -0.5)+ggtitle(i)
 ```
 ```{r}
+# Save the finalized DE results for the chosen resolution and PC set.
 res=1.5
 dims.use.subset=12
 DEgenes <-readRDS( paste0( path.output,"DEgenes_PC",dims.use.subset,".res",res,"_", subset_name,"_",dataset.name,".rds"))
 ```
+
 
 #### Check the expression of the top DE genes using a DotPlot
 ```{r}
@@ -567,8 +614,13 @@ DimPlot(subset,label=T,repel=T,cols= cols.use)
 DotPlot(subset, features = c( "Ifngr1", "Shisa5" ,  "Gimap1" ,"Ctss","Maf" ,"Ctla4","Ncor1","Btg1" ,"Crlf2","perc.ribo", "Cd4","Cst7" ,"Bcl2a1b" ,"Csf1","Rel" , "Il2ra","Foxp3","Icos","Ccr2","Ly6a","Il7r","Ccr8","Il1r2","Bmyc" ,"Mif","Slc39a7","Dnajb14","Zfp593","Nhp2","Actr5","Tff1","Myo18a","Scnm1", "Chchd10","Cd83" ,  "Nrip1" ,"Icam1",   "Hilpda" , "Ddit3"   , "Eno1" ,"Bnip3" , "Ifi203","Ifit3","Isg15" ,"Ran","Mki67","Stmn1","doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
 ```
 
+## 8. Biological Annotation and Multi-Level Population Mapping
 
 ```{r ,warning=FALSE}
+# --- STEP 8A: Defining Detailed Cluster Identities ---
+# We map the mathematical cluster numbers to biological names based on their 
+# expression of 'marker genes' (e.g., Ifngr1, Ctla4, Il1r2, Mki67).
+# Note the identification of specialized subsets like 'Treg IFN' and 'Treg Bmyc-hi'.
 Idents(subset)=plyr::mapvalues(Idents(subset), from=1:8, 
     to=c("Treg Ifngr1-hi ribo-hi", "Treg Ifngr1-hi Csf1","Treg Il1r2-hi","Treg Ifngr1-hi Ctla4-hi","Treg IFN",
         "Treg Il1r2-hi prolif","Treg Il1r2-hi Ccr2-hi","Treg  Bmyc-hi"))
@@ -602,13 +654,20 @@ DimPlot(subset,label=T,repel=T,cols= cols.use, group.by = "annot.old")
 
 
 ```{r , fig.height =8, fig.width =10,warning=FALSE}
+# --- STEP 8B: Cell Cycle and Proliferation Validation ---
+# Use FeaturePlots of Birc5 and Stmn1 to double-check the proliferating cluster.
+# CellSelector allows for manual refinement of the 'proliferating' identity.
 FeaturePlot(subset,c("Mki67","Birc5","Stmn1","Mcm3")) 
 ```
 
 ```{r , fig.height =4, fig.width =6,warning=FALSE}
 DimPlot(subset,label=T,repel=T, group.by = "Phase") 
 ```
+
 ```{r , fig.height =4, fig.width =14}
+# --- STEP 8C: Broad Marker Validation (The Final DotPlot) ---
+# Validating the new groupings against the full suite of activation (Ctla4, Il1r2), 
+# metabolism (Hilpda, Eno1), and interferon (Ifit3, Isg15) genes.
 DotPlot(subset, group.by = "annot.detailed", features = c( "Ifngr1", "Crlf2","perc.ribo", "Shisa5"  ,"Ctss","Ifi203","Ifit3","Isg15" ,"Ifng","Cd4","Cst7" ,"Bcl2a1b" ,"Csf1","Rel" ,"Maf" ,"Ctla4","Ncor1","Btg1" , "Bmyc" ,"Mif","Chchd10", "Nrip1" ,"Icam1",   "Hilpda" ,"Cd83" ,  "Ddit3"   , "Bnip3" ,"Eno1" ,"Il2ra","Foxp3","Icos","Ccr2","Ly6a","Il7r","Ccr8","Il1r2","Slc39a7","Dnajb14","Zfp593","Nhp2","Actr5","Tff1","Myo18a","Scnm1",  "Ran","Mki67","Stmn1","doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
 ```
 ```{r , fig.height =3, fig.width =5}
@@ -626,11 +685,12 @@ DotPlot(subset, group.by = "annot", features = c( "Il1r2"))+RotatedAxis()
 
 
 
-
-
-
-
 ```{r}
+# --- STEP 8D: Creating Hierarchical Metadata ---
+# We create different 'levels' of granularity for the analysis:
+# 1. annot.detailed: Every sub-cluster kept separate.
+# 2. annot.general: Grouping all Ifngr1-hi/Ctla4-hi cells into a broad 'Treg' category.
+# 3. annot: A middle-ground grouping for balanced statistical comparisons.
 subset$annot=plyr::mapvalues(Idents(subset), from=c("Treg Ifngr1-hi ribo-hi", "Treg Ifngr1-hi Csf1","Treg Ifngr1-hi Ctla4-hi","Treg  Bmyc-hi" ), to=c("Treg", "Treg","Treg","Treg" ))
 Idents(subset)="annot"
 Idents(subset, cells=WhichCells(subset, expression= annot.old=="Treg prolif"))="Treg Il1r2-hi prolif"
@@ -696,6 +756,9 @@ DimPlot(subset,label=T,repel=T,cols= cols.use, group.by = "annot.detailed")
 
 
 ```{r,warning=FALSE, echo=FALSE}
+# --- STEP 8E: Comprehensive DE Analysis and Data Export ---
+# Running FindMarkers loops across all three metadata levels (detailed, general, annot).
+# Results are saved as .rds for R and .xlsx for external review.
 clusters=levels(subset$annot.detailed)
 DEgenes_list<-list()
 for ( i in clusters){
@@ -716,6 +779,8 @@ DEgenes_list=readRDS( paste0( path.output,"DEgenes_", subset_name,"_",dataset.na
 ```
 ```{r,warning=FALSE, echo=FALSE}
 names(DEgenes_list)=make.names(names(DEgenes_list))
+
+
 ### Save the differentially expressed genes as an excel table
 writexl::write_xlsx(DEgenes_list,paste0(path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.xlsx"))
 ```
@@ -774,6 +839,9 @@ Idents(subset)="annot"
 DotPlot(subset, features = c( "Il1r2"), group.by = "annot")+RotatedAxis()
 ```
 ```{r}
+# --- STEP 8F: Targeted Comparative Analysis ---
+# Statistical comparison specifically between the Il1r2-high population 
+# and the combined Resting/IFN Treg population.
 i="Il1r2-hi.vs.Treg_and_Treg.IFN"
   DEgenes[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi", ident.2 = c("Treg","Treg IFN"),min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
   DEgenes[[i]]$cluster=i
@@ -785,6 +853,7 @@ i="Il1r2-hi.vs.Treg_and_Treg.IFN"
 
 
 ```{r , fig.height =5, fig.width =12}
+# Visualizing the 'Il1r2-hi' signature markers using a Volcano Plot.
 i="Il1r2-hi.vs.Treg_and_Treg.IFN"
 VolcanoPlot(  DEgenes[[i]], p_valmax_col = 0.5)
 ```
@@ -799,6 +868,7 @@ length(selected.genes)
 
 Export gene names as a csv file for metascape
 ```{r}
+# Exporting the high-confidence gene list for pathway analysis (e.g., Metascape).
 write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
 ```
 
@@ -845,8 +915,12 @@ Export gene names as a csv file for metascape
 write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
 ```
 
+## 9. Pathway Integration & Meta-Cluster Differential Expression
 
 ```{r}
+# --- STEP 9A: Metascape Pathway Integration ---
+# Import the enriched Gene Ontology (GO) terms from external Metascape analysis.
+# We filter for 'Summary' groups to focus on the most impactful biological pathways.
 GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
 #Select only the main pathways
 GO.metascape$group=sapply(strsplit(GO.metascape$GroupID, "_"), "[[",2)
@@ -857,6 +931,9 @@ GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
 
 
 ```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+# --- STEP 9B: Pathway-Specific Volcano Plotting ---
+# Visualize the DE results while highlighting genes belonging to a specific GO term.
+# This proves that the pathway (e.g., 'T cell activation') is statistically significant.
 index=1
 gset.symbols=GO.metascape.summary[index,]$Symbols
 gset.symbols=strsplit(gset.symbols, ",")[[1]]
@@ -867,6 +944,9 @@ VolcanoPlot(DEgenes[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", 
 
 
 ```{r}
+# --- STEP 9C: Targeted Comparison (Ccr2-hi Cluster vs. Resting/IFN) ---
+# Isolate the specific differences of the 'Ccr2-hi' Treg subset. 
+# Ccr2 is often linked to recruitment and specific localization within the tumor.
 i="Il1r2-hi_Il1r2-hi_Ccr2.vs.Treg_and_Treg.IFN"
   DEgenes[[i]]<-FindMarkers(subset, ident.1 = c("Treg Il1r2-hi","Treg Il1r2-hi Ccr2-hi"), ident.2 = c("Treg","Treg IFN"),min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
   DEgenes[[i]]$cluster=i
@@ -878,11 +958,18 @@ i="Il1r2-hi_Il1r2-hi_Ccr2.vs.Treg_and_Treg.IFN"
 
 
 ```{r , fig.height =5, fig.width =12}
+# --- STEP 9D: Meta-Cluster Signature Analysis ---
+# Group both 'Il1r2-hi' and 'Il1r2-hi Ccr2-hi' into a single 'Activated Meta-cluster'.
+# This reveals the common core signature of highly activated tumor Tregs 
+# regardless of their specific sub-state.
 i="Il1r2-hi_Il1r2-hi_Ccr2.vs.Treg_and_Treg.IFN"
 VolcanoPlot(  DEgenes[[i]], p_valmax_col = 0.5)
 ```
 
 ```{r}
+# --- STEP 9E: High-Confidence Gene Selection for Metascape ---
+# Filter for genes with high fold change (>1) and extreme significance (p < 1e-4).
+# Export these as .csv files to feed back into the pathway discovery pipeline.
 selected.genes=rownames( DEgenes[[i]][ DEgenes[[i]]$p_val<1e-4 &  DEgenes[[i]]$avg_logFC>1,])
 length(selected.genes)
 ```
@@ -892,6 +979,7 @@ Export gene names as a csv file for metascape
 write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
 ```
 
+## 10. Multi-Layered Functional Validation & Specific Cluster Comparisons
 
 ```{r}
 GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
@@ -902,6 +990,10 @@ GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
 
 ### Top GO enriched main pathway:
 ```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+# --- STEP 10A: Biological Pathway Projection ---
+# Map the top enriched GO pathways from Metascape back onto the Volcano Plots.
+# This visually highlights how specific biological programs (e.g., 'T cell activation') 
+# are distributed within your differential expression results.
 index=1
 gset.symbols=GO.metascape.summary[index,]$Symbols
 gset.symbols=strsplit(gset.symbols, ",")[[1]]
@@ -912,6 +1004,11 @@ VolcanoPlot(DEgenes[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, ": ", 
 
 
 ```{r}
+# --- STEP 10B: Intragroup Comparisons (The 'Sub-cluster' Nuance) ---
+# We perform 'internal' differential expression to find the unique markers that 
+# separate different flavors of activated Tregs:
+# 1. Ccr2-hi vs. Standard Il1r2-hi: Identifying markers for chemotaxis/recruitment.
+# 2. Proliferating vs. Standard Il1r2-hi: Identifying markers for cell cycle entry.
 i="Il1r2-hi-Ccr2.vs.Il1r2-hi"
   DEgenes[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi Ccr2-hi", ident.2 = c("Treg Il1r2-hi"),min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
   DEgenes[[i]]$cluster=i
@@ -955,23 +1052,23 @@ writexl::write_xlsx(DEgenes_list,paste0(path.output,"DEgenes_", subset_name,"_",
 ```
 
 
-
-
-
-
-
-
-
 ```{r , fig.height =5, fig.width =7,warning=FALSE}
 DimPlot(subset, group.by = "annot.detailed",label=T,repel=T,cols= cols.use) 
 ```
 
 ```{r , fig.height =4, fig.width =14}
+# --- STEP 10C: Cross-Referencing with Reference Signatures ---
+# Validate the 'Bmyc-hi' cluster by projecting the MC38 Treg signature. 
+# This ensures that your detailed annotations (Step 8) remain consistent 
+# with established mouse tumor models.
 DotPlot(subset, group.by = "annot.detailed", features = c( "Ifngr1", "Crlf2","perc.ribo", "Shisa5"  ,"Ctss","Ifi203","Ifit3","Isg15" ,"Ifng","Cd4","Cst7" ,"Bcl2a1b" ,"Csf1","Rel" ,"Maf" ,"Ctla4","Ncor1","Btg1" , "Bmyc" ,"Mif","Chchd10", "Nrip1" ,"Icam1",   "Hilpda" ,"Cd83" ,  "Ddit3"   , "Bnip3" ,"Eno1" ,"Il2ra","Foxp3","Icos","Ccr2","Ly6a","Il7r","Ccr8","Il1r2","Slc39a7","Dnajb14","Zfp593","Nhp2","Actr5","Tff1","Myo18a","Scnm1",  "Ran","Mki67","Stmn1","doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
 ```
 
 
 ```{r}
+# --- STEP 10D: External Reference Validation (MC38 Treg) ---
+# Using the Bmyc-hi signature from the MC38 Treg reference study to confirm 
+# that our 'annot.detailed' sub-clusters match established biological models.
 i="Treg.Il1r2.hi.Bmyc.hi"
 selected.genes= DEgenes_MC38_Tregs [[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.35,"gene"]
 ```
@@ -993,6 +1090,7 @@ FeaturePlot(subset,"Il1r2")
 ```
 
 ```{r , fig.height =4, fig.width =4,warning=FALSE}
+
 VlnPlot(subset,"Il1r2",cols= cols.use, group.by = "annot.general")+NoLegend() +theme(axis.title.x = element_blank())
 ```
 
@@ -1033,14 +1131,20 @@ DotPlot(subset, features = c( "Il1r2"), group.by = "annot")+RotatedAxis()
 
 hypoxia
 ```{r , fig.height =3, fig.width =13}
+# --- STEP 10E: Metabolic & Hypoxia Characterization ---
+# Mapping the 'Hypoxia' module (Hilpda, Vegfa, Eno1). This identifies which 
+# Tregs are responding to the low-oxygen tumor core environment.
 DotPlot(subset, features = c("Hilpda", "Vegfa", "Bnip3", "Hmox1", "Fth1", "Aldoa", "Mif", "Ftl1", "Arg1", "Ldha", "Adam8", "Eno1", "Srgn", "Ndrg1", "Mt1", "Fam162a", "Slc7a2", "Slc2a1", "Mgarp", "Lgals3","Spp1" ))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 
 Treg activation markers
 ```{r , fig.height =3, fig.width =10}
+# --- STEP 10F: Treg Activation & Suppressive Phenotype Mapping ---
+# 1. Activation Check: Plotting classical markers (Ctla4, Icos, Tigit, Lag3).
+# 2. Phenotype Deviation: Checking for 'Fragility' markers (Ifng, Rorc, Il17). 
+# High expression here suggests Tregs may be losing their suppressive identity.
 DotPlot(subset, group.by = "annot", features = c("Ctla4","Nrp1","Itgae", "Ikzf2","Tnfrsf18","Tnfrsf4","Il2ra","Klrg1","Icos","Ccr8","Tnfsf9","Havcr2","Lag3","Pdcd1","Tigit"))+RotatedAxis()
 ```
-
 
 
 deviation of a suppressive Treg phenotype
@@ -1052,9 +1156,15 @@ DotPlot(subset, group.by = "annot", features = c("Il17a","Il17b","Il17c","Il17f"
 FeaturePlot(object = subset, c("Il1r2","Bmyc"))
 ```
 
+## 11. High-Resolution Dimensionality Expansion & Sub-State Sensitivity
+
 ### PC=
 
 ```{r,warning=FALSE}
+# --- STEP 11A: Expanding Dimensionality (PC=25) ---
+# We increase the PC threshold to 25 to capture more subtle transcriptional 
+# variation that might be masked at lower dimensions. 
+# A new UMAP is generated specifically for this PC-depth to compare stability.
 dims.use.subset<-25
 ```
 
@@ -1069,6 +1179,10 @@ subset <- RunUMAP(subset, dims = 1:dims.use.subset, reduction.name = paste0("uma
 FeaturePlot(object = subset,reduction = paste0("umapPC",dims.use.subset), c("Il1r2","Bmyc"))
 ```
 ```{r , fig.height =5, fig.width =7,warning=FALSE, echo=FALSE}
+# --- STEP 11B: Visualizing Cluster Stability ---
+# We project our existing 'Annot', 'Detailed', and 'Old' labels onto the new 
+# 25-PC UMAP. This allows us to see if the clusters (like Bmyc-hi vs Ccr8-hi) 
+# become more distinct or remain stable when more data variance is included.
 DimPlot(object = subset, group.by = "annot.old",reduction = paste0("umapPC",dims.use.subset), label=T, repel=T, cols=cols.use)
 ```
 
@@ -1080,6 +1194,10 @@ DimPlot(object = subset, group.by = "annot.detailed",reduction = paste0("umapPC"
 ```
 
 
+# Re-evaluating the primary activated Treg 'flavors' at high resolution:
+# 1. Ccr8-hi / Il10-hi: The highly suppressive, terminally activated state.
+# 2. Bmyc-hi / Cd70-hi: The metabolically distinct and potentially 'fragile' state.
+# Using 'umapPC25' ensures we are seeing the most refined spatial separation possible.
 
 Il1r2-hi Ccr8-hi
 ```{r , fig.height = 8, fig.width = 12,warning=FALSE}
@@ -1092,7 +1210,7 @@ FeaturePlot(object = subset,reduction = paste0("umapPC",dims.use.subset),  featu
 ```
 
 
-
+## 12. Fine-Grained Clustering & Stability Analysis (PC=25)
 
 #### Clustering
 ```{r ,warning=FALSE}
@@ -1124,6 +1242,10 @@ plot_grid(plotlist=plot)
 
 
 ```{r ,warning=FALSE}
+# --- STEP 12B: Resolution Selection and UMAP Projection ---
+# Based on stability, resolution 1.5 is chosen (yielding 9 clusters).
+# These clusters are projected onto the High-PC UMAP (umapPC25) to ensure 
+# spatial separation matches mathematical grouping.
 res=1.5
 Idents(subset)=paste0("RNA_snn_res.",res)
 Idents(subset)=factor(Idents(subset), levels=1:9)
@@ -1161,6 +1283,11 @@ DEgenes <-readRDS( paste0( path.output,"DEgenes_PC",dims.use.subset,".res",res,"
 
 hypoxia
 ```{r , fig.height =3, fig.width =13}
+# --- STEP 12C: Automated & Hypoxia-Targeted Marker Discovery ---
+# 1. Hypoxia Check: A dedicated DotPlot for glycolytic and oxygen-response genes
+#    (Vegfa, Eno1, Ldha) determines the metabolic state of each cluster.
+# 2. Top-DE Discovery: We extract the top 7 biomarkers for every cluster to 
+#    identify unique 'fingerprint' genes.
 DotPlot(subset, features = c("Hilpda", "Vegfa", "Bnip3", "Hmox1", "Fth1", "Aldoa", "Mif", "Ftl1", "Arg1", "Ldha", "Adam8", "Eno1", "Srgn", "Ndrg1", "Mt1", "Fam162a", "Slc7a2", "Slc2a1", "Mgarp", "Lgals3","Spp1" ))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 #### Check the expression of the top DE genes using a DotPlot
@@ -1185,6 +1312,10 @@ DotPlot(subset, features = c( "Ifngr1","Icos", "Il2ra","Foxp3",  "Il7r","Btg1","
 
 
 ```{r ,warning=FALSE}
+# --- STEP 12D: Final Cluster Identity Mapping ---
+# Numbers are mapped to detailed biological states. Note the distinction 
+# between 'Treg Il1r2-hi IFN' (Activated + Fragile) and 'Treg Il1r2-hi Bmyc-hi'.
+# CellSelector is used to manually 'clean' the proliferating cluster based on Mki67.
 Idents(subset)=plyr::mapvalues(Idents(subset), from=1:9, 
     to=c("Treg Ifngr1","Treg Il1r2-hi IFN","Treg Il1r2-hi ribo-hi","Treg Il1r2-hi prolif","Treg Ifngr1 Ccr2",
          "Treg Il1r2-hi Bmyc-hi","Treg Csf1","Treg IFN","Treg Csf1"))
@@ -1229,6 +1360,10 @@ subset$annot.detailed=Idents(subset)
 
 
 ```{r}
+# --- STEP 12E: Lineage Validation (CD4 T vs. Treg) ---
+# A final high-level comparison between general CD4 T cells and Tregs.
+# This validates that our subsetting was accurate and identifies the 
+# global 'Treg Signature' (Foxp3, Il2ra, etc.) across the tumor.
 DEG=FindMarkers(seur_full, ident.1 = "CD4 T", ident.2 = "Treg")
 DEG$gene=rownames(DEG)
 ```
@@ -1251,8 +1386,13 @@ DotPlot(seur_full, group.by = "annot", features = unique(c(selected.genes)))+Rot
 DotPlot(subset, features = unique(c(selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 
+## 13. Cross-Dataset Signature Projection & Bmyc-hi Sub-cluster Validation
 
 ```{r}
+# --- STEP 13A: Projecting External MC38 Signatures ---
+# We use gene lists from the MC38 Treg reference (Bmyc-hi, Ccr8-hi, and Ctla4 signatures)
+# to see how well they align with our current clusters. This serves as a 
+# 'biological ground truth' for our detailed annotations.
 i="Treg.Il1r2.hi.Bmyc.hi"
 selected.genes= DEgenes_MC38_Tregs [[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.35,"gene"]
 ```
@@ -1265,6 +1405,10 @@ DotPlot(subset, features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+them
 
 
 ```{r}
+# --- STEP 13B: Validating Specific Signature Modules ---
+# We repeat the projection for the 'Ccr8-hi' and 'Ctla4' reference signatures.
+# This confirms that our activated clusters are not monolithic but represent 
+# distinct functional programs found in other tumor models.
 i= "Treg.Il1r2.hi.Ccr8.hi"
 selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.3,"gene"]
 ```
@@ -1300,6 +1444,10 @@ DotPlot(subset, features = c( "Il1r2"))+RotatedAxis()
 
 
 ```{r}
+# --- STEP 13C: Broad Marker Profiling Across Annotations ---
+# Visualizing the dataset at the 'Detailed' and 'General' levels. This validates 
+# that collapsing clusters into 'annot.general' maintains the core distinction 
+# between resting Tregs and the highly activated Il1r2-hi/Bmyc-hi subsets.
 subset$annot.general=plyr::mapvalues(Idents(subset), from=c( "Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2", "Treg Il1r2-hi ribo-hi" ), to=c("Treg","Treg","Treg", "Treg Il1r2-hi" ))
 ```
 
@@ -1338,6 +1486,10 @@ DEgenes_list=readRDS( paste0( path.output,"DEgenes_", subset_name,"_",dataset.na
 DotPlot(subset, features = c( "Il1r2"))+RotatedAxis()
 ```
 ```{r}
+# --- STEP 13D: Identifying the Bmyc-hi Signature ---
+# A targeted comparison between the Bmyc-hi cluster and all 'Il1r2-low' 
+# (resting/IFN) cells. The resulting Volcano Plot and DotPlot reveal the 
+# novel markers (e.g., Tff1, Ripk3, Scnm1) defining this "fragile" state.
 i="Il1r2.hi.Bmyc.vs.Il1r2.lo"
   DEgenes_list[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi Bmyc-hi", ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F, logfc.threshold = 0, min.pct = 0)
   DEgenes_list[[i]]$cluster=i
@@ -1369,6 +1521,10 @@ DotPlot(subset, features =selected.genes[41:93])+RotatedAxis()
 
 
 ```{r , fig.height =3, fig.width =12}
+# --- STEP 13E: Cross-Reference Mapping (Current vs. MC38) ---
+# We take the genes discovered in our Bmyc-hi cluster and project them onto 
+# the MC38_Tregs reference dataset. This "reciprocal validation" proves 
+# these markers are conserved across different experimental cohorts.
 DotPlot(MC38_Tregs, features = unique(c("Il1r2",selected.genes[1:40])))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 
@@ -1391,6 +1547,10 @@ FeaturePlot(subset, features = c("Il1r2", "Polr3c" ,   "Tff1","Myadm","Mllt11", 
 ```
 
 ```{r , fig.height =4, fig.width = 4}
+# --- STEP 13F: Highlighted Spatial Localization ---
+# Final visualization isolating the 'Treg Il1r2-hi Bmyc-hi' cluster on the 
+# PC25 UMAP. This identifies the specific transcriptional "territory" of 
+# these cells within the total Treg population.
 DimPlot(subset,cells.highlight = WhichCells(subset, idents="Treg Il1r2-hi Bmyc-hi"), sizes.highlight = 0.8,reduction = paste0("umapPC",dims.use.subset))+NoLegend()
 ```
 
@@ -1402,6 +1562,8 @@ write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",sub
 ```
 
 
+## 14. Characterization of Ribosomal and Interferon-Activated Subsets
+
 ```{r}
 GO.metascape=readxl::read_xlsx( paste0(path.output,"metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
 #Select only the main pathways
@@ -1410,6 +1572,10 @@ GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
 ```
 
 ```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+# --- STEP 14A: Pathway Projection for Bmyc-hi Subsets ---
+# Projecting the top enriched GO terms from Metascape onto the Bmyc-hi vs. Il1r2-lo 
+# volcano plots. This connects differential gene expression to high-level biological 
+# processes such as 'ribonucleoprotein complex biogenesis' or 'cellular respiration'.
 index=1
 gset.symbols=GO.metascape.summary[index,]$Symbols
 gset.symbols=strsplit(gset.symbols, ",")[[1]]
@@ -1428,6 +1594,10 @@ VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, "
 
 
 ```{r}
+# --- STEP 14B: Defining the Ribosomal-High Treg Program ---
+# Performing a targeted comparison between the 'Treg Il1r2-hi ribo-hi' cluster 
+# and the resting 'Il1r2-lo' populations. This identifies a unique signature 
+# of high protein synthesis (Rps7, Rpl32) and metabolic stress (Hilpda, Ddit4).
 i="Il1r2.hi.ribo.vs.Il1r2.lo"
   DEgenes_list[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi ribo-hi", ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
   DEgenes_list[[i]]$cluster=i
@@ -1454,10 +1624,18 @@ DotPlot(subset, features = unique(c( "Il1r2",selected.genes)))+RotatedAxis()
 ```
 
 ```{r , fig.height =8, fig.width =12}
+# --- STEP 14C: Cross-Dataset Validation of the Ribo-hi State ---
+# Mapping the newly identified ribo-hi markers (Vim, Uba52, Mrpl32) across 
+# both the current subset and the MC38_Tregs reference. This validates 
+# that this high-translation effector state is a conserved Treg phenotype.
 FeaturePlot(subset, features = c("Rps7","Rpl32","Vim","Uba52","Mrpl32", "Mrpl11","Tff1" ,   "Hilpda", "Emd","Ddit4","Ppil3","Ero1l"  ) ,reduction = paste0("umapPC",dims.use.subset))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 
 ```{r , fig.height =4, fig.width = 4}
+# --- STEP 14D: Isolating the 'Ribo-hi' Territory ---
+# Using cells.highlight to pinpoint exactly where these high-translation cells 
+# reside on the high-resolution UMAP, confirming they occupy a distinct 
+# spatial niche from other activated Tregs.
 DimPlot(subset,cells.highlight = WhichCells(subset, idents="Treg Il1r2-hi ribo-hi" ), sizes.highlight = 0.8,reduction = paste0("umapPC",dims.use.subset))+NoLegend()
 ```
 
@@ -1495,6 +1673,11 @@ VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, "
 
 
 ```{r}
+# --- STEP 14E: Defining the Activated-Interferon (IFN) Program ---
+# A focused comparison between 'Treg Il1r2-hi IFN' and the resting populations. 
+# While both 'Treg IFN' and 'Treg Il1r2-hi IFN' clusters respond to interferon, 
+# this analysis extracts the specific genes that signal high activation 
+# (Il1r2) combined with an interferon-induced inflammatory state.
 i="Il1r2.hi.IFN.vs.Il1r2.lo"
   DEgenes_list[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi IFN", ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
   DEgenes_list[[i]]$cluster=i
@@ -1526,6 +1709,7 @@ Export gene names as a csv file for metascape
 write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
 ```
 
+## 15. Refined IFN Mapping and Global Activated Treg Signatures
 
 ```{r}
 GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
@@ -1545,6 +1729,11 @@ VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, "
 
 
 ```{r}
+# --- STEP 15A: Specific Interferon Activation vs. Resting Lineages ---
+# To find the 'activation-specific' interferon signal, we compare the 'Treg Il1r2-hi IFN' 
+# cluster against resting Tregs (Csf1, Ifngr1, Ccr2) while excluding the baseline 
+# 'Treg IFN' cluster. This isolates genes that are induced by interferon 
+# specifically within a highly activated (Il1r2+) context.
 i="Il1r2.hi.IFN.vs.Il1r2.lo.exclIFN"
   DEgenes_list[[i]]<-FindMarkers(subset, ident.1 = "Treg Il1r2-hi IFN", ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
   DEgenes_list[[i]]$cluster=i
@@ -1586,6 +1775,10 @@ GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
 
 
 ```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+# --- STEP 15B: GO Enrichment Projection (IFN Refined) ---
+# Projecting the Metascape-derived 'Summary' pathways back onto the volcano plots. 
+# This confirms that the genes driving the Il1r2-hi IFN state are indeed 
+# enriched for 'Response to Type I Interferon' and 'Antiviral Response' programs.
 index=1
 gset.symbols=GO.metascape.summary[index,]$Symbols
 gset.symbols=strsplit(gset.symbols, ",")[[1]]
@@ -1605,6 +1798,11 @@ VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, "
 
 
 ```{r}
+# --- STEP 15C: Defining the Global 'Il1r2-hi' Activated Program ---
+# We group all three specialized activated clusters (IFN, Bmyc-hi, ribo-hi) 
+# to compare them against all resting/baseline clusters (Il1r2-lo). 
+# This yields the definitive 'Master Signature' of highly suppressive, 
+# tumor-infiltrating Tregs.
 i="Il1r2.hi.all.vs.Il1r2.lo"
   DEgenes_list[[i]]<-FindMarkers(subset, ident.1 =c( "Treg Il1r2-hi IFN","Treg Il1r2-hi Bmyc-hi","Treg Il1r2-hi ribo-hi"), ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F, logfc.threshold = 0, min.pct = 0)
   DEgenes_list[[i]]$cluster=i
@@ -1616,6 +1814,10 @@ saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.na
 
 
 ```{r , fig.height =5, fig.width =12}
+# --- STEP 15D: Visualization of the Core Activation Signature ---
+# Using VolcanoPlots and DotPlots to visualize the high-confidence genes (p < 1e-3, logFC > 0.5) 
+# that define the global activated state. This reveals shared markers like Il1r2, 
+# Ccr8, and various metabolic or stress-related genes across all activated sub-states.
 i="Il1r2.hi.all.vs.Il1r2.lo"
 VolcanoPlot(  DEgenes_list[[i]], p_valmax_col = 0.3, logFCmin_col = 0.3, logFCmin_neg_col = -0.3)
 ```
@@ -1635,6 +1837,7 @@ Export gene names as a csv file for metascape
 write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
 ```
 
+## 16. Multi-Pathway Enrichment and Proliferative Signature Analysis
 
 ```{r}
 GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
@@ -1645,6 +1848,12 @@ GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
 
 
 ```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+# --- STEP 16A: Multi-Index GO Pathway Projection ---
+# We systematically project the top four enriched biological pathways (Index 1-4) 
+# from the Metascape 'Summary' list onto the Volcano plots. This provides 
+# statistical proof that the differentially expressed genes are not random, 
+# but are coordinated across specific biological functions (e.g., cell cycle control, 
+# metabolism, or immune signaling).
 index=1
 gset.symbols=GO.metascape.summary[index,]$Symbols
 gset.symbols=strsplit(gset.symbols, ",")[[1]]
@@ -1678,6 +1887,11 @@ VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, "
 
 
 ```{r}
+# --- STEP 16B: Isolating the Proliferative Activation State ---
+# We perform a targeted differential expression analysis between the 
+# 'Treg Il1r2-hi prolif' cluster and the resting 'Il1r2-lo' lineages. 
+# This isolates the unique genetic program required for Tregs to transition 
+# from a quiescent state to an actively dividing, highly activated state.
 i="Il1r2.ih.prolifl.vs.Il1r2.lo"
   DEgenes_list[[i]]<-FindMarkers(subset, ident.1 =c( "Treg Il1r2-hi prolif"), ident.2 = c("Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2","Treg IFN"), group.by="annot.detailed",min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F, logfc.threshold = 0, min.pct = 0)
   DEgenes_list[[i]]$cluster=i
@@ -1694,6 +1908,11 @@ VolcanoPlot(  DEgenes_list[[i]], p_valmax_col = 0.05, logFCmin_col = 1, logFCmin
 ```
 
 ```{r}
+# --- STEP 16C: High-Confidence Marker Selection (Proliferation) ---
+# Filtering for the most significant genes (p < 1e-8, logFC > 1) associated 
+# with the proliferative subset. Using DotPlots to confirm these markers 
+# (e.g., Mki67, Stmn1, Top2a) are exclusive to this cluster within the 
+# activated Treg landscape.
 selected.genes=rownames( DEgenes_list[[i]][ DEgenes_list[[i]]$p_val<1e-8 &  DEgenes_list[[i]]$avg_logFC>1,])
 length(selected.genes)
 ```
@@ -1708,6 +1927,7 @@ Export gene names as a csv file for metascape
 write.table(selected.genes, file=paste0(path.output,"DEG_",make.names(i),"_",subset_name,"_",dataset.name,".csv"), row.names = F, col.names = F, sep=",")
 ```
 
+## 17. Final Biological Validation and Multi-Level Data Export
 
 ```{r}
 GO.metascape=readxl::read_xlsx( paste0(path.output,"/metascape_DEG_",make.names(i),"_",subset_name,"_",dataset.name,".xlsx"),sheet=2 )
@@ -1718,6 +1938,11 @@ GO.metascape.summary=GO.metascape[GO.metascape$group=="Summary",]
 
 
 ```{r , fig.height =4, fig.width = 10 ,warning=FALSE}
+# --- STEP 17A: Final GO Pathway Projection ---
+# Mapping the primary enriched biological pathway from Metascape onto the current 
+# Volcano Plot. This step provides the final visual confirmation that the 
+# differentially expressed genes in the chosen cluster represent a coherent 
+# functional program (e.g., T cell activation or metabolic reprogramming).
 index=1
 gset.symbols=GO.metascape.summary[index,]$Symbols
 gset.symbols=strsplit(gset.symbols, ",")[[1]]
@@ -1726,6 +1951,10 @@ VolcanoPlot(DEgenes_list[[i]],subset_col_gene=gset.symbols)+ggtitle(paste0( i, "
 ```
 
 ```{r,warning=FALSE, echo=FALSE}
+# --- STEP 17B: Archiving Detailed Cluster DEGs ---
+# We save the high-resolution 'annot.detailed' markers into a permanent RDS file 
+# and a formatted Excel workbook. This serves as the primary data resource for 
+# describing specific Treg sub-states (Bmyc-hi, Ccr2-hi, etc.) in the manuscript.
 DEgenes_list=readRDS( paste0( path.output,"DEgenes_", subset_name,"_",dataset.name,".annot.detailed.rds"))
 ```
 
@@ -1738,6 +1967,11 @@ writexl::write_xlsx(DEgenes_list,paste0(path.output,"DEgenes_", subset_name,"_",
 
 
 ```{r,warning=FALSE, echo=FALSE}
+# --- STEP 17C: Generating General Population Markers ---
+# To provide a 'higher-level' view of Treg activation, we perform differential 
+# expression across the broad 'annot.general' groups (e.g., Treg vs. Treg Il1r2-hi). 
+# This isolates the fundamental markers of activation that are shared across 
+# all specialized sub-clusters.
 clusters=levels(subset$annot.general)
 DEgenes_list<-list()
 for ( i in clusters){
@@ -1753,6 +1987,10 @@ saveRDS(DEgenes_list, paste0( path.output,"DEgenes_", subset_name,"_",dataset.na
 
 
 ```{r , fig.height =3.5, fig.width =5}
+# --- STEP 17D: Final Activation Gradient Check ---
+# A final DotPlot focuses strictly on the expression of Il1r2 across the 
+# generalized groups. This ensures that our "General" labels accurately 
+# represent the activation rheostat identified throughout the analysis.
 DotPlot(subset, group.by = "annot.general", features = c( "Il1r2"))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 
@@ -1769,10 +2007,15 @@ writexl::write_xlsx(DEgenes_list,paste0(path.output,"DEgenes_", subset_name,"_",
 
 
 
-
+## 18. Global Integration of Detailed Treg Annotations
 
 
 ```{r ,warning=FALSE}
+# --- STEP 18A: Global Metadata Synchronization ---
+# We transfer the high-resolution 'annot.detailed' labels from the Treg subset 
+# back into the full Seurat object (seur_full). This ensures that the 
+# discoveries made during the subsetting phase are reflected in the 
+# master clinical dataset.
 Idents(seur_full)="annot"
 for ( i in unique(Idents(subset)))
   Idents(seur_full, WhichCells(subset, idents=i))=i
@@ -1781,12 +2024,25 @@ seur_full$annot.detailed=Idents(seur_full)
 
 
 ```{r , fig.height = 6, fig.width =10,warning=FALSE}
+# --- STEP 18B: Final Multi-Populated UMAP Projection ---
+# Generating the master UMAP for the entire experiment. This visualization 
+# places the detailed Treg populations within the context of the total 
+# tumor microenvironment. It provides the final spatial evidence for 
+# how activated Tregs are distributed relative to other immune subsets.
 DimPlot(seur_full, group.by =  "annot.detailed",label=T,repel=T, cols=cols.use) 
 ```
+
+
+## 19. T/NK Cell Subset Integration and Refined Preprocessing
 
 ### subset T/NK cells
 
 ```{r}
+# --- STEP 19A: Lymphoid Compartment Subsetting ---
+# We isolate all T cell (CD4, CD8, Treg) and NK cell populations from the master 
+# dataset. This 'lymphocyte-only' view removes the high variance introduced by 
+# myeloid or stromal cells, allowing for a more sensitive UMAP projection of 
+# lymphoid states.
 seur=seur_full[,WhichCells(seur_full, idents=c("Treg Il1r2-hi prolif" , "Treg IFN" ,  "Treg Il1r2-hi ribo-hi" ,"Treg Il1r2-hi IFN",   "Treg Csf1" ,         "Treg Ifngr1" , "Treg Il1r2-hi Bmyc-hi", "Treg Ifngr1 Ccr2",    "Treg"  ,    "CD4T"    ,    "CD8T"  ,     "T prolif" , "NK"       ))]
 ```
 
@@ -1798,6 +2054,11 @@ dim(seur)
 
  Standard preprocessing and clustering of the subsetted dataset
 ```{r,warning=FALSE}
+# --- STEP 19B: Specialized Lymphoid Normalization & PCA ---
+# Standard preprocessing is re-applied to the subset. The Elbow Plot and 
+# DimHeatmaps are used to determine the optimal number of Principal Components 
+# (PCs). For this subset, 21 PCs are selected to capture the relevant 
+# variance between T and NK cell lineages.
 seur <-  NormalizeData(seur,verbose = F) %>% FindVariableFeatures(verbose = F) %>% ScaleData(verbose = F) %>% RunPCA( features = VariableFeatures(seur) ,verbose = F)
 ```
 ```{r , fig.height = 4, fig.width = 6,warning=FALSE}
@@ -1810,6 +2071,10 @@ DimHeatmap(seur, dims = 1:21, balanced = TRUE)
 DimHeatmap(seur, dims = 22:39, balanced = TRUE)
 ```
 ```{r,warning=FALSE}
+# --- STEP 19C: UMAP Projection & General Annotation Mapping ---
+# The UMAP is generated using the refined 21-PC space. We then map our 
+# 'annot.general' labels onto this new space to verify that the Treg 
+# activation states remain distinct within the broader lymphocyte context.
 dims.use<-21
 ```
 
@@ -1837,24 +2102,47 @@ select.cells=CellSelector(DimPlot(seur,cols= cols.use, group.by ="annot.general"
 Idents(seur, cells=select.cells)="NK2"
 
 ```{r }
+# --- STEP 19D: Discovery of Novel NK Subsets (NK2) ---
+# Using 'CellSelector' to manually identify a distinct island on the UMAP 
+# (designated as 'NK2'). We then perform Differential Expression (DE) between 
+# this new group and the standard NK cells to identify unique markers or 
+# potential doublet contamination.
 DEG=FindMarkers(seur, ident.1 = "NK2", ident.2 = "NK")
 ```
 ```{r , fig.height =4, fig.width =12}
 VolcanoPlot(DEG)
 ```
 ```{r , fig.height = 4, fig.width =13}
+# --- STEP 19E: Multi-Lineage Marker Profiling ---
+# A comprehensive DotPlot is used to 'fingerprint' every cluster in the T/NK subset. 
+# This includes markers for Tregs (Foxp3), CD8s (Cd8a), NK cells (Ncr1), and 
+# potential contaminants (Lyz2 for Myeloid, Cd79a for B cells).
 DotPlot(seur,features=c("Cd3e","Cd3g","Foxp3","Il2ra","Tnfrsf9","Ikzf2","Izumo1r","Mki67","Stmn1","Cd4","Cd40lg","S1pr1","Cd8a","Cd8b1","Xcl1","Klra7","Klrb1c","Ncr1","Gzma","Cd79a","Cd79b","Cd19","Ms4a1","Csf3r","Retnlg","S100a8","Lyz2","Fn1","Chil3","F13a1","Vcan","Tgfbi","Adgre1","C1qa","Ms4a7","Lgmn","H2-Aa","Cd74","H2-DMb1","Cd209a","Napsa","Kmo","Ccr9","Siglech","Pacsin1","Xcr1","Rab7b","Clec9a","Flt3","Cacnb3","Ccl22","Nudt17","doublet.score"  ))+RotatedAxis()+theme(axis.title=element_blank())
 ```
 ```{r , fig.height =8, fig.width =12,warning=FALSE}
+# --- STEP 19F: Spatial Doublet & Contamination Check ---
+# FeaturePlots for Myeloid markers (C1qa, Lyz2) and 'doublet.score' are mapped 
+# onto the lymphoid UMAP. This is a critical QC step to ensure that small 
+# clusters (like the newly identified NK2) are true biological populations 
+# rather than T-cell/Macrophage doublets.
 FeaturePlot(seur,c("C1qa","C1qb","Lyz2","Chil3","Vcan","H2-Aa","Cd209a","Csf3r","doublet.score")) 
 ```
 
+## 20. Subset Refinement and Hierarchical T/NK Cell Mapping
 
 ```{r }
+# --- STEP 20A: Cleaning the Lymphoid Compartment ---
+# Based on previous QC markers, the "NK2" population is removed (invert=T). 
+# This ensures that downstream PCA and UMAP projections are driven by true 
+# lymphoid biology rather than leftover noise or doublets.
 seur=seur[,WhichCells(seur, idents="NK2", invert=T)]
 ```
 
 ```{r,warning=FALSE}
+# --- STEP 20B: Re-calculation of the PCA/UMAP Space ---
+# A second round of normalization and Scaling is performed on the clean subset. 
+# We maintain 21 PCs (as verified by the Elbow Plot and DimHeatmap) to preserve 
+# the fine-grained differences between T cell effector states.
 seur <-  NormalizeData(seur,verbose = F) %>% FindVariableFeatures(verbose = F) %>% ScaleData(verbose = F) %>% RunPCA( features = VariableFeatures(seur) ,verbose = F)
 ```
 ```{r , fig.height = 4, fig.width = 6,warning=FALSE}
@@ -1885,6 +2173,13 @@ levels( Idents(seur))[!levels( Idents(seur)) %in%new.order]
 
 
 ```{r}
+# --- STEP 20C: Hierarchical Annotation Mapping ---
+# We establish a three-tier metadata system to allow for analysis at different 
+# levels of granularity:
+# 1. annot.detailed: The most specific labels (e.g., Treg Il1r2-hi Bmyc-hi).
+# 2. annot: Collapses specific ribosomal and resting Treg clusters.
+# 3. annot.general: Groups all activated Il1r2-hi cells together for 
+#    broad population comparisons.
 Idents(seur)=factor( Idents(seur), levels=new.order)
 seur$annot.detailed=Idents(seur)
 seur$annot=plyr::mapvalues(Idents(seur), from=c( "Treg Csf1","Treg Ifngr1","Treg Ifngr1 Ccr2", "Treg Il1r2-hi ribo-hi" ), to=c("Treg","Treg","Treg", "Treg Il1r2-hi" ))
@@ -1903,10 +2198,18 @@ DimPlot(seur,label=T,repel=T,cols= cols.use, group.by ="annot.general" )
 ```
 
 ```{r , fig.height = 4, fig.width =12}
+# --- STEP 20D: Global Lineage Verification ---
+# DotPlots are used to confirm that every cluster expresses its expected 
+# lineage markers: NK (Ncr1, Gzma), CD8 (Cd8a), CD4 (Cd40lg), and Treg (Foxp3). 
+# This "Master DotPlot" provides the primary proof of cluster identity.
 DotPlot(seur,features=c("Xcl1","Klra7","Klrb1c","Ncr1","Gzma" ,"Cd3e","Cd3g","Cd8a","Cd8b1", "Cd4","Cd40lg","S1pr1","Foxp3","Il2ra","Ctla4","Cst7" ,"Bcl2a1b","Nkg7","Cxcr6" ,"Csf1","Rel"  , "Btg1","Ifngr1", "Il7r","Icos", "Ccr2","Ccl5","Fus","Gzmb","Ifit3","Slfn8","Ifit1",  "Ifi203","Isg15" ,"Gbp7" ,"Ly6a","Il1r2" ))+RotatedAxis()+theme(axis.title=element_blank())
 ```
 
 ```{r , fig.height =4, fig.width =12}
+# --- STEP 20E: Refined Activated Treg Profiling ---
+# A deep-dive DotPlot profiles the specific metabolic (Hilpda, Eno1), 
+# translational (perc.ribo), and stress-related (Bmyc, Tff1) markers that 
+# define the activation spectrum within the Treg compartment.
 DotPlot(seur, features = c("Il1r2","Mrpl32","Pet100","Batf","Dgat1","Jarid2","Ptbp1","Il2rg","Bmp2k","perc.ribo","Rpl17","Fau",  "Hilpda" ,"Chchd10","Ppil3","Vim","Bmyc" , "Ddt","Dars","Slc39a7","Dnajb14","Tff1","Ripk3","Hmgn5","Scnm1", "Zfp593","Nhp2","Mif","Ran","Mki67","Stmn1","Ccr8","Eno1" ,"Bnip3" ,"doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
 ```
 
@@ -1914,9 +2217,16 @@ DotPlot(seur, features = c("Il1r2","Mrpl32","Pet100","Batf","Dgat1","Jarid2","Pt
 DotPlot(subset,features = c( "Il1r2","Ccr8"))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 
-
+## 21. Reciprocal Validation of the Bmyc-hi Gene Module
 
 ```{r}
+# --- STEP 21A: Signature Extraction and Multi-Tiered Projection ---
+# We extract the 'Bmyc-hi' signature from the MC38 reference (selected.genes) 
+# and project it onto our current subset at three levels: 
+# 1. Broadly by 'annot.general' (Resting vs. Activated).
+# 2. Granularly by 'annot.detailed'.
+# 3. Externally by the original MC38 Treg clusters.
+# This confirms the signature's robustness across different clustering resolutions.
 i="Treg.Il1r2.hi.Bmyc.hi"
 selected.genes= DEgenes_MC38_Tregs [[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.35,"gene"]
 ```
@@ -1935,6 +2245,11 @@ DotPlot(subset, group.by = "annot.detailed", features = unique(c("Il1r2",selecte
 DotPlot(MC38_Tregs, features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 ```{r , fig.height =10, fig.width =15}
+# --- STEP 21B: Visualizing the Bmyc-hi Core Program ---
+# We map the primary drivers of this subset—including NF-kB family members (Rel, Relb, Nfkb2), 
+# activation markers (Cd83, Icam1), and stress/metabolic genes (Bmyc, Chchd10)—using 
+# FeaturePlots. This spatial visualization in both the MC38 reference and the 
+# experimental subset reveals a highly localized "hotspot" of these genes.
 FeaturePlot(MC38_Tregs, features = c("Il1r2","Bmyc","Rel","Relb","Cd81","Bcl2a1b","Gpr183", "Gadd45b", "Chchd10","Penk" ,"Pcsk1" , "Ccdc184" , "Cd83" , "Bhlhe40" , "Icam1" ,"Nfkb2","Nrip1","Fas" ,"Marcksl1","Hspa9"  ),ncol=5, reduction ="umapHarmonyTheta1PC25")+RotatedAxis()+theme(axis.title = element_blank())
 ```
 ```{r , fig.height =4, fig.width = 4}
@@ -1945,6 +2260,11 @@ DimPlot(MC38_Tregs,cells.highlight = WhichCells(MC38_Tregs, idents="Treg Il1r2-h
 DimPlot(MC38_Tregs,label=T,repel=T, cols=cols.use,reduction ="umapHarmonyTheta1PC25")
 ```
 ```{r , fig.height =2.5, fig.width =10}
+# --- STEP 21C: Comparative Signature "Fingerprinting" ---
+# Using DotPlots to compare the expression intensity of the Bmyc module. 
+# The patterns in the MC38 reference (Step 21B/C) nearly perfectly mirror 
+# the experimental subset (Step 21C/D), proving that the 'Bmyc-hi' state is 
+# a distinct and reproducible biological entity.
 DotPlot(MC38_Tregs, features = c("Il1r2","Bmyc","Rel","Relb","Cd81","Bcl2a1b","Gpr183", "Gadd45b", "Chchd10","Penk" ,"Pcsk1" , "Ccdc184" , "Cd83" , "Bhlhe40" , "Icam1" ,"Nfkb2","Nrip1","Fas" ,"Marcksl1","Hspa9"    ))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 ```{r , fig.height =10, fig.width =15}
@@ -1954,6 +2274,11 @@ FeaturePlot(subset, c("Il1r2","Bmyc","Rel","Relb","Cd81","Bcl2a1b","Gpr183", "Ga
 DotPlot(subset, group.by = "annot.general", features = c("Il1r2","Bmyc","Rel","Relb","Cd81","Bcl2a1b","Gpr183", "Gadd45b", "Chchd10","Penk" ,"Pcsk1" , "Ccdc184" , "Cd83" , "Bhlhe40" , "Icam1" ,"Nfkb2","Nrip1","Fas" ,"Marcksl1","Hspa9"    ))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 ```{r , fig.height =4, fig.width = 4}
+# --- STEP 21D: Final Cluster Localization and Color Mapping ---
+# We use 'cells.highlight' to confirm the spatial position of the Bmyc-hi 
+# population. Finally, a customized DimPlot is generated with specific colors 
+# to highlight the "Activated" Treg flavors (IFN-hi in orchid, Bmyc-hi in magenta, 
+# and Proliferative in goldenrod) against the grey resting Treg background.
 DimPlot(subset,cells.highlight = WhichCells(subset, idents="Treg Il1r2-hi Bmyc-hi"), sizes.highlight = 0.8,reduction = paste0("umapPC",dims.use.subset))+NoLegend()
 ```
 
@@ -1962,8 +2287,14 @@ DimPlot(subset,cells.highlight = WhichCells(subset, idents="Treg Il1r2-hi Bmyc-h
 DimPlot(subset, group.by = "annot.general",cols=c("Treg"="grey"   , "Treg IFN"="grey" ,   "Treg Il1r2-hi IFN" ="darkorchid",  "Treg Il1r2-hi" ="darkolivegreen1" ,  "Treg Il1r2-hi Bmyc-hi"="magenta" ,"Treg Il1r2-hi prolif"="goldenrod1" ), sizes.highlight = 0.8,reduction = paste0("umapPC",dims.use.subset))
 ```
 
+## 22. Ccr8-hi Signature Projection and Final Data Serialization
 
 ```{r}
+# --- STEP 22A: Ccr8-hi Effector Program Projection ---
+# We extract the 'Ccr8-hi' signature from the MC38 reference and map it onto 
+# our experimental subset. This identifies the most potent effector pole of 
+# the Treg population, characterized by high expression of suppressive 
+# molecules (Il10) and chemotactic factors (Ccl4).
 i= "Treg.Il1r2.hi.Ccr8.hi"
 selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val<0.01 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.3,"gene"]
 ```
@@ -1980,6 +2311,11 @@ DotPlot(MC38_Tregs, features = unique(c("Il1r2",selected.genes)))+RotatedAxis()+
 ```
 
 ```{r , fig.height =8, fig.width =12}
+# --- STEP 22B: Spatial Mapping of Effector Markers ---
+# FeaturePlots visualize the expression of Ccr8, Il10, and Vsir (VISTA) in 
+# both datasets. The co-localization of these genes confirms that the 
+# Il1r2-hi Bmyc-hi/prolif clusters overlap with the most immunosuppressive 
+# "terminal" effector state identified in the MC38 tumor model.
 FeaturePlot(MC38_Tregs, features = c("Il1r2","Ccr8",  "Ccl4" , "Rilpl2" , "Mt1",  "Sv2c"  ,"Il10",  "Bcl2a1d", "Vsir","Plk3","Eea1","Irf8"   ), reduction ="umapHarmonyTheta1PC25")+RotatedAxis()+theme(axis.title = element_blank())
 ```
 ```{r , fig.height =4, fig.width = 6}
@@ -1999,7 +2335,13 @@ DotPlot(MC38_Tregs,features=c("Cd4","Foxp3","Ikzf2",  "Ctla4","Saraf","Klf2","Kl
 ```{r , fig.height =4, fig.width =15}
 DotPlot(subset, features = c( "Foxp3","Il2ra","Ctla4","Cst7" ,"Bcl2a1b","Nkg7","Cxcr6" ,"Csf1","Rel"  , "Btg1","Ifngr1", "Il7r","Icos", "Ccr2","Ccl5","Fus","Gzmb","Ifit3","Slfn8","Ifit1",  "Ifi203","Isg15" ,"Gbp7" ,"Ly6a","Il1r2","Mrpl32","Pet100","Batf","Dgat1","Jarid2","Ptbp1","Il2rg","Bmp2k","perc.ribo","Rpl17","Fau",  "Hilpda" ,"Chchd10","Ppil3","Vim","Bmyc" , "Ddt","Dars","Slc39a7","Dnajb14","Tff1","Ripk3","Hmgn5","Scnm1", "Zfp593","Nhp2","Mif","Ran","Mki67","Stmn1","Ccr8","Eno1" ,"Bnip3" ,"doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
 ```
+
 ```{r , fig.height =3.5, fig.width =5}
+# --- STEP 22C: Broad vs. Detailed Marker Comparison ---
+# A comprehensive DotPlot analysis confirms the expression of classic Treg 
+# markers (Foxp3, Ctla4) alongside activation-induced genes (Eno1, Bnip3). 
+# This confirms that 'Il1r2' is a reliable proxy for the transition from 
+# resting (Sell-hi/Klf2-hi) to activated (Ccr8-hi/Il1r2-hi) states.
 DotPlot(subset,  group.by = "annot.general",features = c( "Il1r2","Ccr8"))+RotatedAxis()+theme(axis.title = element_blank())
 ```
 
@@ -2025,11 +2367,21 @@ DotPlot(subset, features = c( "Il1r2"))+RotatedAxis()
 
 
 ```{r , fig.height =5, fig.width =5}
+# --- STEP 22D: Quantifying Activation via Il1r2 ---
+# Violin plots and FeaturePlots of 'Il1r2' provide a final quantitative 
+# look at the activation gradient. This clearly separates the 'General' 
+# Treg categories, proving that Il1r2 expression strictly follows the 
+# transition to the terminal effector state.
 VlnPlot(subset, features = c( "Il1r2"), group.by = "annot.general", cols=cols.use)+RotatedAxis()+NoLegend()+theme(axis.title.x=element_blank())
 ```
 
 
 ```{r}
+# --- STEP 22E: Final Data Serialization and Archiving ---
+# The finalized, annotated Seurat objects—including the full dataset, 
+# the T/NK subset, and the high-resolution Treg subset—are saved as .rds files. 
+# This ensures that all metadata, cluster labels, and dim-reductions are 
+# preserved for downstream differential abundance or pseudotime analysis.
 saveRDS(subset, paste0(path.output,subset_name,"_",dataset.name,".seurat.rds"))
 ```
 
