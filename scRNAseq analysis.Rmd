@@ -2,7 +2,10 @@
 title: "Il1r2 expression and Tregs including prolif Tregs "
 output: html_notebook
 ---
+
+## 1. Header and Environment Setup
 ```{r}
+# --- STEP 1: Load Environment and Global Variables ---
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(Seurat))
 suppressPackageStartupMessages(library(ggplot2))
@@ -11,17 +14,30 @@ suppressPackageStartupMessages(library(clustree))
  suppressPackageStartupMessages(library(ggalluvial))
 ```
 ```{r}
+# Define output paths and specific naming conventions for the analysis run
 path.output='/Users/iha-eun/Library/CloudStorage/OneDrive-VrijeUniversiteitBrussel/Useful/Own analysis/results'
 dataset.name="DL37-38"
 subset_name="Tregs_incl.prolif"
+
+# Import custom helper functions for QC and Normalization
 source("~/Documents/scripts/preprosessing_May.2020.R")
+
+# Define a consistent color palette for cell clusters in plots
 cols.use=c("brown1","goldenrod1","darkorchid","darkolivegreen1","magenta","goldenrod3","dodgerblue","mediumpurple","turquoise3","lightblue","seagreen","coral","violetred","grey","green3","goldenrod4","palevioletred","yellow", "brown3", "pink", "bisque", "yellowgreen", "purple","lightgreen","royalblue","pink3","lightgreen","violet","coral","violetred","grey","green4","goldenrod4")
 ```
 
+## 2. Data Integration and External Reference
+Use these when loading your Seurat object and external Differential Expression (DE) results.
 ```{r,warning=FALSE, echo=FALSE}
+# --- STEP 2: Loading Comparative Reference Data ---
+# Import Differential Expression (DE) results from the Zhang 2020 study (MC38 tumor model)
+# We use this as a 'ground truth' to see if our Tregs match known tumor-infiltrating signatures.
 DEgenes_MC38_Tregs <- readRDS("/Users/iha-eun/Library/CloudStorage/OneDrive-VrijeUniversiteitBrussel/Useful/Own analysis/DEgenes_control.only_Tregs_ZhangL2020_mouse_MC38_tumor_Tcells_annot.rds")
+
+# Load the core Seurat object containing the Treg population
 MC38_Tregs<-readRDS(paste0("/Users/iha-eun/Library/CloudStorage/OneDrive-VrijeUniversiteitBrussel/Useful/Own analysis/control.only_Tregs_ZhangL2020_mouse_MC38_tumor_Tcells.seurat.rds"))
 ```
+
 
 ```{r}
 seur_full=readRDS( paste0(path.output,dataset.name,".seurat.rds"))
@@ -29,20 +45,30 @@ subset_old=readRDS( paste0(path.output,"Tregs_",dataset.name,".seurat.rds"))
 ```
 
 ```{r}
+# --- Global Population Mapping ---
+# Define a comprehensive color palette for major immune lineages (T cells, NK, B, Myeloid).
 cols.use2=c("Treg"="brown1",  "Treg prolif"="brown3","CD4T"="orange", "CD8T"="yellow2" ,"T prolif"="darkolivegreen1" ,  "NK"="mediumpurple" ,"B"= "magenta"   , "Neutrophil"="cyan"   , "Mono"="lightblue" ,      "Mac"="dodgerblue" ,"cDC2"="green3" ,"pDC"="lightgreen","cDC1"="green4" ,  "migDC"="pink"     )
 ```
 
 
 ```{r , fig.height = 6, fig.width =7,warning=FALSE}
+# Visualize the full dataset to ensure all major immune cell types are present.
 DimPlot(seur_full, group.by =  "annot",label=T,repel=T, cols=cols.use2) 
 ```
 
 ```{r , fig.height = 4, fig.width =13}
+# --- Multi-Lineage Validation (Marker DotPlot) ---
+# Verify cluster identities using canonical markers:
+# T-cells (Cd3e), Tregs (Foxp3/Il2ra), Proliferation (Mki67), 
+# B-cells (Cd19), and various Myeloid subsets (Lyz2, H2-Aa).
 DotPlot(seur_full, group.by = "annot",features=c("Cd3e","Cd3g","Foxp3","Il2ra","Tnfrsf9","Ikzf2","Izumo1r","Mki67","Stmn1","Cd4","Cd40lg","S1pr1","Cd8a","Cd8b1","Xcl1","Klra7","Klrb1c","Ncr1","Gzma","Cd79a","Cd79b","Cd19","Ms4a1","Csf3r","Retnlg","S100a8","Lyz2","Fn1","Chil3","F13a1","Vcan","Tgfbi","Adgre1","C1qa","Ms4a7","Lgmn","H2-Aa","Cd74","H2-DMb1","Cd209a","Napsa","Kmo","Ccr9","Siglech","Pacsin1","Xcr1","Rab7b","Clec9a","Flt3","Cacnb3","Ccl22","Nudt17"  ))+RotatedAxis()+theme(axis.title=element_blank())
 ```
 
 
 ```{r , fig.height = 5, fig.width = 6}
+# --- Target Gene Inspection: Il1r2 ---
+# Check the distribution of Il1r2 across the whole dataset using Feature and Violin plots.
+# This confirms whether Il1r2 is specifically enriched in Tregs compared to other immune cells.
 FeaturePlot(seur_full,c("Il1r2"))
 ```
 
@@ -62,23 +88,34 @@ DimPlot(subset_old, pt.size = 1,label=T,repel=T)
 
 
 ```{r}
+# --- Population Refinement and Merging ---
+# Isolate "Treg prolif" cells from the full dataset and merge them with the existing Treg subset.
+# This ensures the subsequent analysis includes both resting and dividing Treg populations.
 Idents(seur_full)=seur_full$annot
 subset=merge(subset_old, seur_full[,WhichCells(seur_full, idents="Treg prolif")])
+
+# Preserve the original labels as 'annot.old' before starting new sub-clustering.
 subset$annot.old=Idents(subset)
 ```
 
 
 ```{r,warning=FALSE}
+# Check the dimensions of the new subset to confirm successful merging.
 dim(subset)
 ```
 
 
 
+## 3. Feature Selection & Dimensionality Reduction
 
 ### Preprocessing with removing mitochondrial and roibosomal genes from the HVG list
 
 
 ```{r}
+# --- STEP 3: Filtering Variable Features & PCA ---
+# Identify mitochondrial (mt-) and ribosomal (Rps/Rpl) genes. 
+# These are often excluded from downstream analysis because their high variance 
+# can represent cellular stress or technical noise rather than cell-type biology.
 mito.genes <- grep(pattern = "^mt-", x = rownames(subset), value = TRUE)
 print(mito.genes)
 ```
@@ -89,6 +126,7 @@ print(ribo.genes)
 ```
 
 ```{r}
+# Calculate the percentage of ribosomal reads per cell to monitor protein synthesis levels.
 subset$perc.ribo <- Matrix::colSums(GetAssayData(subset, slot = "counts")[ribo.genes, ])/Matrix::colSums(GetAssayData(subset, slot = "counts"))
 ```
 
@@ -99,9 +137,14 @@ print(mito.genes)
 
 
 ```{r , fig.height =4, fig.width = 12,warning=FALSE}
+# Visualize 'contamination' or metabolic activity on the UMAP to ensure clusters 
+# aren't forming solely based on high mitochondrial/ribosomal content.
 FeaturePlot(object = subset, features = c("perc.mito","perc.ribo"))
 ```
 ```{r}
+# --- Refining Highly Variable Genes (HVGs) ---
+# Extract the standard HVG list and manually remove the mito/ribo genes identified above.
+# This forces the Principal Component Analysis (PCA) to focus on functional biological markers.
 HVG =VariableFeatures(subset)
 length(HVG)
 ```
@@ -112,29 +155,40 @@ length(HVG)
 
 
 ```{r,warning=FALSE}
+# Run PCA using the cleaned HVG list to reduce the complexity of the dataset.
 subset <- RunPCA(subset, features = HVG,  reduction.name = "PcaHVG", reduction.key ="PcaHVG_", verbose=F)
 ```
 ```{r , fig.height = 4, fig.width = 6,warning=FALSE}
+# --- Determining Dimensionality ---
+# Use an Elbow Plot to identify the 'elbow' point where adding more PCs 
+# provides diminishing returns in explaining the variance of the data.
 ElbowPlot(object = subset,ndims =50,reduction = "PcaHVG")
 ```
 
 ```{r , fig.height = 12, fig.width = 12}
+# Use Heatmaps to visualize the primary genes driving each PC. 
+# This helps confirm that the selected PCs (1:18) represent real biological signatures.
 DimHeatmap(subset, dims = 1:21, balanced = TRUE,reduction = "PcaHVG")
 ```
 
 
 
 ```{r,warning=FALSE}
+# --- Final Manifold Embedding (UMAP) ---
+# Set the number of PCs (18) based on the Elbow Plot and Heatmaps.
 dims.use.subset<-18
 ```
 
 
 
 ```{r}
+# Generate the UMAP coordinates using the PcaHVG reduction for final visualization.
 subset <- RunUMAP(subset, dims = 1:dims.use.subset, reduction = "PcaHVG" ,verbose =F, n.neighbors = 20, reduction.name = "umapHVG", reduction.key ="umapHVG_") 
 ```
 
 ```{r , fig.height =3, fig.width = 4,warning=FALSE, echo=FALSE}
+# --- Biological Validation of the Embedding ---
+# Check how cells group by experimental condition and original annotation.
 DimPlot(object = subset,group.by="condition",reduction = "umapHVG", label=T, repel=T)
 ```
 
@@ -142,17 +196,25 @@ DimPlot(object = subset,group.by="condition",reduction = "umapHVG", label=T, rep
 DimPlot(object = subset, group.by = "annot.old",reduction = "umapHVG",  label=T, repel=T, cols=cols.use)
 ```
 ```{r , fig.height = 4, fig.width = 8,warning=FALSE}
+# Overlay target gene expression (Il1r2, Bmyc, and Interferon-Stimulated Genes like Isg15) 
+# to see where specifically 'fragile' or activated Tregs reside on the map.
 FeaturePlot(object = subset,  features = c("Il1r2","Bmyc" ), ncol=2,reduction = "umapHVG")
 ```
 ```{r , fig.height = 4, fig.width = 12,warning=FALSE}
 FeaturePlot(object = subset,  features = c("Ifit3","Ifit3b", "Isg15" ), ncol=3,reduction = "umapHVG")
 ```
 
-
+## 4. Unsupervised Clustering & Marker Discovery
 
 #### Clustering
 ```{r ,warning=FALSE}
+# --- STEP 4: Clustering & Resolution Optimization ---
+# Build a Shared Nearest Neighbor (SNN) graph based on the 18 PCs selected earlier.
+# The 'k.param=10' determines how many 'neighbors' each cell looks at to find its group.
 subset <- FindNeighbors(subset, dims = 1:dims.use.subset, reduction = "PcaHVG", verbose=F, k.param=10, graph.name = "RNA_snn_HVG")
+
+# Run a loop to test clustering at different 'resolutions' (from 0 to 2).
+# Algorithm 4 (Leiden) is used here as it is mathematically more robust than the standard Louvain.
 for ( i in seq(0,2, 0.25))
 subset <- FindClusters(subset, graph.name = "RNA_snn_HVG", resolution = i, verbose=F, algorithm = 4)
 # algorithm= 4 is Leiden algorithm - often performs better
@@ -162,6 +224,9 @@ subset <- FindClusters(subset, graph.name = "RNA_snn_HVG", resolution = i, verbo
 
 #### Plot of a clustering tree showing the relationship between clusterings at different resolutions. (using the clustree package)
 ```{r , fig.height = 8, fig.width = 8,warning=FALSE}
+# --- Visualizing Cluster Stability ---
+# Use 'clustree' to see how clusters split and merge as resolution increases.
+# This helps identify 'stable' clusters versus those that are being forced apart artificially.
 clustree(subset, prefix = "RNA_snn_HVG_res.")+
    ggtitle("Clustering tree")
 ```
@@ -172,11 +237,16 @@ plot<-list()
 for ( res in c( 0.75,1,1.25,1.5))
 plot[[as.character(res)]]<-DimPlot(subset, pt.size = 1,label=T,repel=T, group.by = paste0("RNA_snn_HVG_res.",res), cols=cols.use,reduction = "umapHVG") +
    ggtitle(paste("res=",res))
+# Compare UMAPs of the most likely resolutions (0.75 to 1.5).
+# This visual check ensures the chosen resolution captures the biological diversity 
+# (e.g., separating Proliferating Tregs from Interferon-high Tregs).
 plot_grid(plotlist=plot)
 ```
 
 
 ```{r ,warning=FALSE}
+# --- Final Cluster Selection ---
+# Set the final resolution to 1.0 and assign these labels as the active identities (Idents).
 res=1
 Idents(subset)=paste0("RNA_snn_HVG_res.",res)
 ```
@@ -185,10 +255,15 @@ DimPlot(subset,label=T,repel=T,cols= cols.use,reduction = "umapHVG")
 ```
 
 ```{r , fig.height =3, fig.width =5}
+# Final check: Do these clusters express our target gene?
+# Plotting Il1r2 expression across the newly defined clusters.
 DotPlot(subset, features = c( "Il1r2"), group.by = paste0("RNA_snn_HVG_res.",1))+RotatedAxis()
 ```
 
 ```{r}
+# --- Automated Marker Identification (All Clusters) ---
+# Loop through every cluster to find 'Marker Genes' (genes significantly higher in one cluster 
+# compared to all others combined).
 DEgenes=list()
 for (i in levels(Idents(subset))){
   DEgenes[[i]]<-FindMarkers(subset, ident.1 = i,min.cells.group=2,pseudocount.use = 0.01, max.cells.per.ident = 1000,verbose = F)
@@ -197,6 +272,9 @@ for (i in levels(Idents(subset))){
   DEgenes[[i]]$max.cells.per.ident=1000
   DEgenes[[i]]$gene=row.names(DEgenes[[i]])
 }
+
+# Save the list of marker genes. These will be used to 'name' the clusters 
+# (e.g., if a cluster has Mki67 as a top marker, we name it 'Treg prolif').
 saveRDS(DEgenes, paste0( path.output,"DEgenes_HVGrm_PC",dims.use.subset,".res",res,"_", subset_name,"_",dataset.name,".rds"))
 ```
 
@@ -207,8 +285,13 @@ dims.use.subset=18
 DEgenes <-readRDS( paste0( path.output,"DEgenes_HVGrm_PC",dims.use.subset,".res",res,"_", subset_name,"_",dataset.name,".rds"))
 ```
 
+## 5. Biological Validation & Sub-Population Profiling
+
 #### Check the expression of the top DE genes using a DotPlot
 ```{r}
+# --- STEP 5A: Top Marker Identification ---
+# Extract the top 8 differentially expressed (DE) genes for each cluster to create a 
+# 'genetic fingerprint' for every sub-population.
 features.use=unlist(lapply(DEgenes, function(x) { head(x[x$avg_logFC>0,]$gene,8)}))
 length(features.use)
 names(features.use)=NULL
@@ -216,6 +299,8 @@ features.use=features.use[!duplicated(features.use)]
 ```
 
 ```{r , fig.height =4, fig.width =14}
+# Broad DotPlot: Visualize these top markers to define cluster identities 
+# (e.g., finding the Mki67+ proliferating cluster or the Isg15+ interferon cluster).
 DotPlot(subset, features = features.use)+RotatedAxis()
 ```
 ```{r , fig.height = 3, fig.width =4,warning=FALSE}
@@ -231,13 +316,19 @@ DotPlot(subset, features = c("Cd4","Cd40lg","Foxp3","Icos","Ccr2","Ly6a","Maf" ,
 
 #### Standard preprocessing and clustering of the subsetted dataset
 ```{r,warning=FALSE}
+# --- STEP 5B: Standardized Re-processing ---
+# To ensure the highest resolution for this specific Treg subset, 
+# re-normalize and re-scale the data, then recalculate Principal Components.
 subset <-  NormalizeData(subset,verbose = F) %>% FindVariableFeatures(verbose = F) %>% ScaleData(verbose = F) 
 subset=RunPCA(subset, features = VariableFeatures(subset) ,verbose = F)
 ```
 ```{r , fig.height = 4, fig.width = 6,warning=FALSE}
+# Elbow Plot: Determining the optimal dimensions (setting dims to 12 based on the drop-off).
 ElbowPlot(object = subset,ndims =50)
 ```
 ```{r , fig.height = 12, fig.width = 12}
+# Heatmaps: Identifying which biological programs (e.g., cell cycle vs signaling) 
+# drive each Principal Component (PC).
 DimHeatmap(subset, dims = 1:20, balanced = TRUE)
 ```
 
@@ -266,6 +357,13 @@ DimPlot(object = subset, label=T, repel=T, cols=cols.use)
 ```
 
 ```{r , fig.height =3, fig.width =12}
+# --- STEP 5C: Master Annotation DotPlot (The Biological 'ID Card') ---
+# This massive plot validates every cluster using four major gene 'modules':
+# - Lineage: Cd4, Foxp3, Il2ra (Ensures they are all Tregs)
+# - Activation/Suppression: Ctla4, Il10, Il1r2, Ccr8
+# - Fragility/Interferon: Ifngr1, Ifit3, Isg15, Ifi203
+# - Proliferation: Mki67, Stmn1, Mcm3
+# - Quality Control: doublet.score, perc.mito (Ensures no bad cells are driving a cluster)
 DotPlot(subset, features = c("Cd3e","Cd3g","Cd4","adt_CD4","Foxp3","Il2ra","Ctla4","Lgals3bp" , "Arl5a" ,"Ifi203" ,"Cst7" ,"Il10","Med20","Tmem126b","Il1r2","Ccr8","Rpl28",     "Rpl22l1" ,"Ran","Tff1","Dnlz",  "Ifngr1","Neurl3", "Shisa5" ,  "Gimap1" ,"Ctss","Ifit3","Ifit3b", "Hilpda" , "Ddit3"   , "Eno1" ,"Bnip3" ,"Serpina3f","Sell","adt_CD62L","Mki67","Stmn1","Mcm3","doublet.score" ,"perc.mito","nCount_RNA_log","nFeature_RNA_log"))+RotatedAxis()
 ```
 
@@ -273,6 +371,9 @@ DotPlot(subset, features = c("Cd3e","Cd3g","Cd4","adt_CD4","Foxp3","Il2ra","Ctla
 
  
 ```{r}
+# --- STEP 5D: External Validation ---
+# Using the Zhang 2020 (MC38) reference list, extract genes associated with 'Ctla4' 
+# and project them onto this dataset to see if the effector signatures match.
 i="Treg.Ctla4"  
 selected.genes= DEgenes_MC38_Tregs[[i]][ DEgenes_MC38_Tregs[[i]]$p_val_adj<1e-3 &  DEgenes_MC38_Tregs[[i]]$avg_logFC>0.5,"gene"]
 ```
